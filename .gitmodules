@@ -1,0 +1,6 @@
+[submodule "third-party/cuda-kernel-loader"]
+	path = third-party/cuda-kernel-loader
+	url = https://github.com/shamanDevel/cuda-kernel-loader.git
+[submodule "third-party/json"]
+	path = third-party/json
+	url = https://github.com/nlohmann/json.git
