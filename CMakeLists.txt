@@ -108,11 +108,17 @@ set(QUICKMLP_HEADERS
     include/qmlp/fused_network.h
     include/qmlp/qmlp.h
     include/qmlp/errors.h
+    include/qmlp/tensor.h
+
+    include/qmlp/kernels/tensor.cuh
+    include/qmlp/kernels/encoding_identity.cuh
     )
     
 set(QUICKMLP_SOURCES
     src/qmlp.cpp
     src/activation.cpp
+    src/tensor.cpp
+    src/encoding_identity.cpp
     )
 
 # Compare with grep and warn if mismatched
