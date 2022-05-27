@@ -1,5 +1,7 @@
 #include <qmlp/encoding_identity.h>
 
+#include <tinyformat.h>
+
 QUICKMLP_NAMESPACE_BEGIN
 
 EncodingIdentity::EncodingIdentity(const nlohmann::json& cfg)
@@ -24,12 +26,14 @@ int EncodingIdentity::numOutputChannels() const
 
 std::string EncodingIdentity::qualifiedName() const
 {
-    
+    return tinyformat::format(
+        "qmlp::kernel::EncodingIdentity<%d, %d>",
+        startChannel_, numChannels_);
 }
 
 void EncodingIdentity::fillCode(std::stringstream& code) const
 {
-    throw std::logic_error("Not implemented");
+    code << ckl::KernelLoader::MainFile("qmlp/kernels/encoding_identity.cuh");
 }
 
 QUICKMLP_NAMESPACE_END

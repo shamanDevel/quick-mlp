@@ -185,7 +185,8 @@ if(NOT TARGET qmlp)
 
   target_include_directories(
     qmlp ${qmlp_system} PUBLIC ${qmlp_INCLUDE_DIR})
-  target_include_directories(qmlp PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
+  target_include_directories(qmlp PRIVATE 
+    ${CMAKE_CURRENT_BINARY_DIR} third-party/tinyformat)
 
   # CUDA Stuff
   target_link_libraries(qmlp PUBLIC
