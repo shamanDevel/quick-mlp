@@ -104,21 +104,26 @@ set(QUICKMLP_HEADERS
     include/qmlp/activation.h
     include/qmlp/iencoding.h
     include/qmlp/encoding_identity.h
-    include/qmlp/inner_network.h
     include/qmlp/fused_network.h
     include/qmlp/qmlp.h
     include/qmlp/errors.h
     include/qmlp/tensor.h
+    )
+    
+set(QUICKMLP_RESOURCES
+    include/qmlp/builtin-activations.json
 
     include/qmlp/kernels/tensor.cuh
     include/qmlp/kernels/encoding_identity.cuh
-    )
-    
+    include/qmlp/kernels/layer.cuh
+)
+
 set(QUICKMLP_SOURCES
     src/qmlp.cpp
     src/activation.cpp
     src/tensor.cpp
     src/encoding_identity.cpp
+    src/fused_network.cpp
     )
 
 # Compare with grep and warn if mismatched
@@ -127,16 +132,32 @@ if(QUICKMLP_MASTER_PROJECT AND NOT CMAKE_VERSION VERSION_LESS 3.12)
     GLOB_RECURSE _qmlp_header_check
     LIST_DIRECTORIES false
     RELATIVE "${CMAKE_CURRENT_SOURCE_DIR}"
-    CONFIGURE_DEPENDS "include/qmlp/*.h")
-  set(_qmlp_here_only ${QUICKMLP_HEADERS})
+    CONFIGURE_DEPENDS "include/qmlp/*")
+  set(_qmlp_here_only ${QUICKMLP_HEADERS} ${QUICKMLP_RESOURCES})
   set(_qmlp_disk_only ${_qmlp_header_check})
   list(REMOVE_ITEM _qmlp_here_only ${_qmlp_header_check})
-  list(REMOVE_ITEM _qmlp_disk_only ${QUICKMLP_HEADERS})
+  list(REMOVE_ITEM _qmlp_disk_only ${QUICKMLP_HEADERS} ${QUICKMLP_RESOURCES})
   if(_qmlp_here_only)
-    message(AUTHOR_WARNING "QUICKMLP_HEADERS has extra files:" ${_qmlp_here_only})
+    message(AUTHOR_WARNING "QUICKMLP_HEADERS+QUICKMLP_RESOURCES has extra files:" ${_qmlp_here_only})
   endif()
   if(_qmlp_disk_only)
-    message(AUTHOR_WARNING "QUICKMLP_HEADERS is missing files:" ${_qmlp_disk_only})
+    message(AUTHOR_WARNING "QUICKMLP_HEADERS+QUICKMLP_RESOURCES is missing files:" ${_qmlp_disk_only})
+  endif()
+
+  file(
+    GLOB_RECURSE _qmlp_src_check
+    LIST_DIRECTORIES false
+    RELATIVE "${CMAKE_CURRENT_SOURCE_DIR}"
+    CONFIGURE_DEPENDS "src/*.cpp")
+  set(_qmlp_here_only ${QUICKMLP_SOURCES})
+  set(_qmlp_disk_only ${_qmlp_src_check})
+  list(REMOVE_ITEM _qmlp_here_only ${_qmlp_src_check})
+  list(REMOVE_ITEM _qmlp_disk_only ${QUICKMLP_SOURCES})
+  if(_qmlp_here_only)
+    message(AUTHOR_WARNING "QUICKMLP_SOURCES has extra files:" ${_qmlp_here_only})
+  endif()
+  if(_qmlp_disk_only)
+    message(AUTHOR_WARNING "QUICKMLP_SOURCES is missing files:" ${_qmlp_disk_only})
   endif()
 endif()
 
@@ -144,6 +165,8 @@ endif()
 # But we can't use it yet
 string(REPLACE "include/" "${CMAKE_CURRENT_SOURCE_DIR}/include/" QUICKMLP_HEADERS
                "${QUICKMLP_HEADERS}")
+string(REPLACE "include/" "${CMAKE_CURRENT_SOURCE_DIR}/include/" QUICKMLP_RESOURCES
+               "${QUICKMLP_RESOURCES}")
 string(REPLACE "src/" "${CMAKE_CURRENT_SOURCE_DIR}/src/" QUICKMLP_SOURCES
                "${QUICKMLP_SOURCES}")
 
@@ -170,10 +193,10 @@ if(NOT TARGET qmlp)
   # (long name used here to keep this from clashing in subdirectory mode)
   if (QUICKMLP_SHARED)
     add_library(qmlp SHARED
-        ${QUICKMLP_HEADERS} ${QUICKMLP_SOURCES})
+        ${QUICKMLP_HEADERS} ${QUICKMLP_RESOURCES} ${QUICKMLP_SOURCES})
   else()
     add_library(qmlp STATIC
-        ${QUICKMLP_HEADERS} ${QUICKMLP_SOURCES})
+        ${QUICKMLP_HEADERS} ${QUICKMLP_RESOURCES} ${QUICKMLP_SOURCES})
   endif()
   add_library(qmlp::qmlp ALIAS qmlp) # to match exported target
 

@@ -1,0 +1,12 @@
+[
+    {
+        "id": "relu",
+        "forward": "z = max(x, 0)",
+        "adjoint": "adjx = x>0 ? adjz : 0"
+    },
+    {
+        "id": "sine",
+        "forward": "z = hsin(x)",
+        "adjoint": "adjx = hcos(x)*adjz"
+    }
+]

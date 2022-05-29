@@ -117,7 +117,7 @@ ActivationFactory::ActivationFactory(const nlohmann::json& cfg, const std::files
     }
 }
 
-Activation_ptr ActivationFactory::get(const std::string& key)
+Activation_ptr ActivationFactory::get(const std::string& key) const
 {
     auto it = activations_.find(key);
     if (it == activations_.end())

@@ -8,7 +8,7 @@
 #include <ckl/kernel_loader.h>
 
 QUICKMLP_NAMESPACE_BEGIN
-    class InnerNetwork
+class InnerNetwork
 {
     struct LayerSpecification
     {
@@ -20,6 +20,8 @@ QUICKMLP_NAMESPACE_BEGIN
         //This is useful in the last layer
         std::vector<Activation_ptr> activations;
 
+        //cached parameter for easy access
+        int channelsIn;
         //prefix sum, offset into parameter array
         int weightsStart;
         int biasStart;
@@ -29,8 +31,13 @@ QUICKMLP_NAMESPACE_BEGIN
     int channelsOut_;
     std::vector<LayerSpecification> layers_;
 
+    int numParameters_;
     Tensor parametersInference_;
     Tensor parametersGradients_;
+
+    //
+
+public:
 
     /**
      * Constructs the inner network from the Json configuration 'cfg',
@@ -44,9 +51,9 @@ QUICKMLP_NAMESPACE_BEGIN
      */
     [[nodiscard]] virtual std::string parameterName() const { return ""; }
 
-    [[nodiscard]] int parameterCount();
+    [[nodiscard]] int parameterCount() const;
 
-    [[nodiscard]] virtual Tensor::Precision parameterPrecision(Tensor::Usage usage) const;
+    [[nodiscard]] Tensor::Precision parameterPrecision(Tensor::Usage usage) const;
 
     /**
      * Sets the underlying parameter to the specified tensor.
@@ -54,15 +61,17 @@ QUICKMLP_NAMESPACE_BEGIN
      *   type parameterPrecision(Usage)
      * \param usage the usage for the parameters
      */
-    virtual void setParameter(const Tensor& tensor, Tensor::Usage usage);
+    void setParameter(const Tensor& tensor, Tensor::Usage usage);
 
     /**
      * Writes the parameters into the constant field denoted by 'constantName'.
      * This field is then later passed to the evaluation kernel.
      * \see ckl::KernelFunction::fillConstantMemoryAsync
      */
-    virtual void fillParameterConstant(
+    void fillParameterConstant(
         const std::string& constantName, const ckl::KernelFunction& function, CUstream stream);
+
+
 };
 
 QUICKMLP_NAMESPACE_END

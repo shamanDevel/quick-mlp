@@ -75,6 +75,7 @@ typedef std::shared_ptr<Activation> Activation_ptr;
  */
 class ActivationFactory
 {
+public:
     /**
      * Loads the activations from an activation specification tag.
      * 'cfg' is an array with filenames, each file then contains
@@ -97,7 +98,7 @@ class ActivationFactory
      * Returns the activation with the given identifier.
      * Throws an exception if no such key was found
      */
-    Activation_ptr get(const std::string& key);
+    Activation_ptr get(const std::string& key) const;
 
 private:
     void parseFile(const std::filesystem::path& file);
