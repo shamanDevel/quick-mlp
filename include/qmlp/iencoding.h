@@ -4,7 +4,10 @@
 
 #include <vector>
 #include <sstream>
+#include <unordered_map>
+#include <functional>
 #include <ckl/kernel_loader.h>
+#include <nlohmann/json.hpp>
 
 #include "tensor.h"
 
@@ -32,6 +35,9 @@ class IEncoding
 {
 public:
     virtual ~IEncoding() = default;
+
+    [[nodiscard]] virtual nlohmann::json toJson() const = 0;
+    [[nodiscard]] virtual std::string id() const = 0;
 
     /**
      * The maximal addressed input channel, e.g. 2 for a 3D index.
@@ -89,7 +95,20 @@ public:
      */
     virtual void fillParameterConstant(
         const std::string& constantName, const ckl::KernelFunction& function, CUstream stream) {}
+
 };
 typedef std::shared_ptr<IEncoding> IEncoding_ptr;
+
+class EncodingFactory
+{
+private:
+    EncodingFactory();
+    typedef std::function<IEncoding_ptr(const nlohmann::json&)> factory_t;
+    std::unordered_map<std::string, factory_t> encodings_;
+public:
+    static EncodingFactory& Instance();
+
+    IEncoding_ptr create(const nlohmann::json& cfg);
+};
 
 QUICKMLP_NAMESPACE_END

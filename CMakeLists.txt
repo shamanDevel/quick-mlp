@@ -123,6 +123,7 @@ set(QUICKMLP_SOURCES
     src/activation.cpp
     src/tensor.cpp
     src/encoding_identity.cpp
+    src/iencoding.cpp
     src/fused_network.cpp
     )
 

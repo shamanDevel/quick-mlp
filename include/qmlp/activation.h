@@ -36,7 +36,7 @@ public:
 
     Activation(const nlohmann::json& cfg);
 
-    nlohmann::json toJson() const;
+    [[nodiscard]] nlohmann::json toJson() const;
 
     [[nodiscard]] const std::string& id() const
     {

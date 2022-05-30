@@ -1,0 +1,26 @@
+{
+    "num_input": 3,
+    "num_outputs": 1,
+    "activation_specification": [
+        "qmlp/builtin-activations.json"
+    ],
+    "encodings": [
+        {
+            "id": "Identity",
+            "start_in": 0,
+            "n_in": 3
+        }
+    ],
+    "network": [
+        {
+            "n_out": 16,
+            "bias": true,
+            "activation": "relu"
+        },
+        {
+            "n_out": 1,
+            "bias": true,
+            "activation": "relu"
+        }
+    ]
+}

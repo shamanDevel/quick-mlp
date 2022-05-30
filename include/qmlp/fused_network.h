@@ -29,9 +29,9 @@ class FusedNetwork
     };
 
     int channelsIn_;
-    std::vector<IEncoding_ptr> encodings_;
-
     int channelsOut_;
+    int networkInputPadding_;
+    std::vector<IEncoding_ptr> encodings_;
     std::vector<LayerSpecification> layers_;
 
     int numParameters_;
@@ -41,6 +41,9 @@ class FusedNetwork
     //CUstreams for training
 
 public:
+    //Size of the matrix fragments (hardware limitation of the tensor cores)
+    //All inner sizes must be multiples of this.
+    static constexpr int MATRIX_SIZE = 16;
 
     /**
      * Constructs the inner network from the Json configuration 'cfg',
@@ -48,15 +51,16 @@ public:
      */
     FusedNetwork(const nlohmann::json& cfg, const std::filesystem::path& parent);
 
-    /**
-     * Returns the fully-qualified name of the parameter structure.
-     *
-     */
-    [[nodiscard]] virtual std::string parameterName() const { return ""; }
+    [[nodiscard]] const std::vector<IEncoding_ptr>& encodings() const { return encodings_; }
 
-    [[nodiscard]] int parameterCount() const;
+    [[nodiscard]] int channelsIn() const { return channelsIn_; }
+    [[nodiscard]] int channelsOut() const { return channelsOut_; }
+    [[nodiscard]] Tensor::Precision precisionIn() const { return Tensor::FLOAT; }
+    [[nodiscard]] Tensor::Precision precisionOut() const { return Tensor::FLOAT; }
 
-    [[nodiscard]] Tensor::Precision parameterPrecision(Tensor::Usage usage) const;
+    [[nodiscard]] int networkParameterCount() const;
+
+    [[nodiscard]] Tensor::Precision networkParameterPrecision(Tensor::Usage usage) const;
 
     /**
      * Sets the underlying parameter to the specified tensor.
@@ -64,14 +68,26 @@ public:
      *   type parameterPrecision(Usage)
      * \param usage the usage for the parameters
      */
-    void setParameter(const Tensor& tensor, Tensor::Usage usage);
+    void setNetworkParameter(const Tensor& tensor, Tensor::Usage usage);
+    
+    /**
+     * \brief Performs inference of the network
+     * \param input the input data of shape (N, channelsIn) of type precisionIn()
+     * \param output the output data of shape (N, channelsOut) of type precisionIn()
+     * \param stream the cuda stream where the kernel is emplaced onto
+     */
+    void inference(const Tensor& input, Tensor& output, CUstream stream);
+
+    //TODO: training code
+
+private:
 
     /**
      * Writes the parameters into the constant field denoted by 'constantName'.
      * This field is then later passed to the evaluation kernel.
      * \see ckl::KernelFunction::fillConstantMemoryAsync
      */
-    void fillParameterConstant(
+    void fillNetworkConstant(
         const std::string& constantName, const ckl::KernelFunction& function, CUstream stream);
 
 

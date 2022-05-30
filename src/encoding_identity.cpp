@@ -14,6 +14,25 @@ EncodingIdentity::EncodingIdentity(const nlohmann::json& cfg)
         throw configuration_error("Num channels must be positive, but is %d", numChannels_);
 }
 
+nlohmann::json EncodingIdentity::toJson() const
+{
+    return nlohmann::json{
+        {"id", id()},
+        {"start_in", startChannel_},
+        {"n_in", numChannels_}
+    };
+}
+
+std::string EncodingIdentity::ID()
+{
+    return "identity";
+}
+
+std::string EncodingIdentity::id() const
+{
+    return ID();
+}
+
 int EncodingIdentity::maxInputChannel() const
 {
     return startChannel_ + numChannels_ - 1;

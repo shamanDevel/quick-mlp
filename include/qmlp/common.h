@@ -17,14 +17,23 @@
 #define QUICKMLP_NAMESPACE_BEGIN namespace qmlp {
 #define QUICKMLP_NAMESPACE_END }
 
-
-
 QUICKMLP_NAMESPACE_BEGIN
-class NonAssignable {
+    class NonAssignable {
     //https://stackoverflow.com/a/22495199
 public:
     NonAssignable(NonAssignable const&) = delete;
     NonAssignable& operator=(NonAssignable const&) = delete;
     NonAssignable() {}
 };
+
+/**
+ * Rounds the number 'numToRound' up to the next multiple of 'multiple'.
+ */
+template<typename T>
+T roundUp(T numToRound, T multiple)
+{
+    //source: https://stackoverflow.com/a/9194117/1786598
+    return ((numToRound + multiple - 1) / multiple) * multiple;
+}
+
 QUICKMLP_NAMESPACE_END
