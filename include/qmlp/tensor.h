@@ -6,6 +6,7 @@
 #include <memory>
 #include <vector>
 #include <variant>
+#include <array>
 #include <cuda_fp16.h>
 
 #include "errors.h"
@@ -111,6 +112,27 @@ public:
     [[nodiscard]] const std::vector<int32_t>& strides() const
     {
         return strides_;
+    }
+
+    template<int N>
+    [[nodiscard]] int64_t idx(const std::array<int32_t, N>& indices) const
+    {
+        assert(N == ndim());
+        for (int i = 0; i < N; ++i) {
+            assert(indices[i] >= 0);
+            assert(indices[i] < sizes_[i]);
+        }
+        int64_t idx = 0;
+        for (int i=0; i< N; ++i)
+        {
+            idx += indices[i] * strides_[i];
+        }
+    }
+
+    template<int32_t... Args>
+    [[nodiscard]]int64_t idx(int32_t args... ) const
+    {
+        return idx(std::array<int32_t, sizeof...(args)>({ args... }));
     }
 
     [[nodiscard]] const void* rawPtr() const;

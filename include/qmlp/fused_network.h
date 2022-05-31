@@ -52,11 +52,14 @@ public:
     FusedNetwork(const nlohmann::json& cfg, const std::filesystem::path& parent);
 
     [[nodiscard]] const std::vector<IEncoding_ptr>& encodings() const { return encodings_; }
+    [[nodiscard]] int numEncodings() const { return encodings_.size(); }
+    [[nodiscard]] IEncoding_ptr encoding(int idx);
 
     [[nodiscard]] int channelsIn() const { return channelsIn_; }
     [[nodiscard]] int channelsOut() const { return channelsOut_; }
     [[nodiscard]] Tensor::Precision precisionIn() const { return Tensor::FLOAT; }
     [[nodiscard]] Tensor::Precision precisionOut() const { return Tensor::FLOAT; }
+    [[nodiscard]] int numLayers() const { return layers_.size(); }
 
     [[nodiscard]] int networkParameterCount() const;
 
@@ -69,6 +72,18 @@ public:
      * \param usage the usage for the parameters
      */
     void setNetworkParameter(const Tensor& tensor, Tensor::Usage usage);
+
+    /**
+     * \brief Returns the slice of the parameter corresponding
+     * to the weight matrix (bias=false) or bias vector (bias=true)
+     * of the specified layer 'layer'.
+     *
+     * Important: The resulting tensor <b>shared</b> the memory of the
+     * tensor set by \ref setNetworkParameter().
+     * This method is used during testing to validate the network
+     * against PyTorch.
+     */
+    Tensor networkParameter(int layer, bool bias, Tensor::Usage usage);
     
     /**
      * \brief Performs inference of the network

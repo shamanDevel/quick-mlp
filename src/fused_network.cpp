@@ -128,6 +128,13 @@ FusedNetwork::FusedNetwork(const nlohmann::json& cfg, const std::filesystem::pat
     }
 }
 
+IEncoding_ptr FusedNetwork::encoding(int idx)
+{
+    if (idx < 0 || idx >= encodings_.size())
+        throw std::runtime_error("Array index out of bounds");
+    return encodings_[idx];
+}
+
 int FusedNetwork::networkParameterCount() const
 {
     return numParameters_;
