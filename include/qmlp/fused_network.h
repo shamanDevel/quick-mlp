@@ -9,7 +9,7 @@
 #include <ckl/kernel_loader.h>
 
 QUICKMLP_NAMESPACE_BEGIN
-class FusedNetwork
+class FusedNetwork : NonAssignable
 {
     struct LayerSpecification
     {
@@ -44,6 +44,9 @@ public:
     //Size of the matrix fragments (hardware limitation of the tensor cores)
     //All inner sizes must be multiples of this.
     static constexpr int MATRIX_SIZE = 16;
+
+    //Maximal shared memory on the hardware I'm using (48kB)
+    static constexpr int MAX_SHARED_MEMORY_BYTES = 48 * 1024;
 
     /**
      * Constructs the inner network from the Json configuration 'cfg',
@@ -82,6 +85,10 @@ public:
      * tensor set by \ref setNetworkParameter().
      * This method is used during testing to validate the network
      * against PyTorch.
+     *
+     * \param layer the layer index in [0, numLayers()-1]
+     * \param bias true->return bias vector; false->return weight matrix
+     * \param usage inference or gradient
      */
     Tensor networkParameter(int layer, bool bias, Tensor::Usage usage);
     

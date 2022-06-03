@@ -1,12 +1,12 @@
 {
-    "num_input": 3,
+    "num_inputs": 3,
     "num_outputs": 1,
     "activation_specification": [
         "qmlp/builtin-activations.json"
     ],
     "encodings": [
         {
-            "id": "Identity",
+            "id": "identity",
             "start_in": 0,
             "n_in": 3
         }

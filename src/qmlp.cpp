@@ -10,8 +10,7 @@ QuickMLP::QuickMLP()
     //later, replace by embedded filesystem once the kernels are fixed.
     const std::filesystem::path current(__FILE__);
     const auto parent = current.parent_path().parent_path() / "include";
-    const std::string regex = ".*\\.cuh";
-    kl_->setFileLoader(std::make_shared<ckl::FilesystemLoader>(parent, regex));
+    kl_->setFileLoader(std::make_shared<ckl::FilesystemLoader>(parent));
 }
 
 QuickMLP& QuickMLP::Instance()

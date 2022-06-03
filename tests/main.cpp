@@ -5,6 +5,8 @@
 #include <ckl/kernel_loader.h>
 #include <cuda_runtime.h>
 
+#include "qmlp/qmlp.h"
+
 struct MyListener : Catch::TestEventListenerBase {
 
 	using TestEventListenerBase::TestEventListenerBase; // inherit constructor
@@ -26,6 +28,7 @@ int main(int argc, char* argv[]) {
 	std::cout << "Change printf limit from " << currentPrintfLimit << " to " << newPrintfLimit << std::endl;
 
 	ckl::KernelLoader::Instance().disableCudaCache();
+	qmlp::QuickMLP::Instance().kernelLoader()->disableCudaCache();
 
 	int result;
 	{

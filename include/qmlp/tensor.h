@@ -41,7 +41,7 @@ private:
     std::vector<int32_t> strides_;
 
     template<typename T>
-    void assertType()
+    void assertType() const
     {
         if (precision_ == FLOAT && !std::is_same_v<float, T>)
         {
@@ -108,6 +108,10 @@ public:
     {
         return sizes_;
     }
+    [[nodiscard]] int32_t size(int dim) const
+    {
+        return sizes_[dim];
+    }
 
     [[nodiscard]] const std::vector<int32_t>& strides() const
     {
@@ -127,6 +131,7 @@ public:
         {
             idx += indices[i] * strides_[i];
         }
+        return idx;
     }
 
     template<int32_t... Args>
@@ -142,7 +147,7 @@ public:
     [[nodiscard]] const T* dataPtr() const
     {
         assertType<T>();
-        return static_cast<T*>(rawPtr());
+        return static_cast<const T*>(rawPtr());
     }
 
     template<typename T>
@@ -152,6 +157,25 @@ public:
         return static_cast<T*>(rawPtr());
     }
 
+    /**
+     * Fills this tensor with zeros.
+     * Note, this assumes the tensor to be continuous.
+     * Every entry between the start and last entry are overwritten, even
+     * if the strides skip entries.
+     */
+    void zero_();
+
+    /**
+     * Returns the kernel accessor from this.
+     * \tparam Accessor the accessor type, e.g. qmlp::kernel::Tensor3RW
+     */
+    template<typename Accessor>
+    Accessor accessor() const
+    {
+        return Accessor(static_cast<typename Accessor::PtrType>(
+            const_cast<typename Accessor::Type*>(dataPtr<typename Accessor::Type>())), 
+            sizes().data(), strides().data());
+    }
     /**
      * Returns the kernel accessor from this.
      * \tparam Accessor the accessor type, e.g. qmlp::kernel::Tensor3RW

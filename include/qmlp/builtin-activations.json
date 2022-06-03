@@ -1,8 +1,8 @@
 [
     {
         "id": "relu",
-        "forward": "z = max(x, 0)",
-        "adjoint": "adjx = x>0 ? adjz : 0"
+        "forward": "z = __float2half(fmaxf(__half2float(x), 0.f))",
+        "adjoint": "const half hZERO = __float2half(0); adjx = __hgt(x, hZERO) ? adjz : hZERO"
     },
     {
         "id": "sine",

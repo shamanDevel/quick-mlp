@@ -22,7 +22,7 @@ struct %s
         %s ;
         return adjx;
     }
-}
+};
     )code";
 
     //https://stackoverflow.com/a/3588492/1786598
@@ -98,6 +98,7 @@ ActivationFactory::ActivationFactory(const nlohmann::json& cfg, const std::files
             {
                 auto j = nlohmann::json::parse(content.value());
                 parseFile(j);
+                continue;
             }
             //not found
             throw configuration_error("Path to activation file '%s' could not be resolved. Is the filename correct?",

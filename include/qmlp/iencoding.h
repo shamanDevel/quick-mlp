@@ -58,7 +58,7 @@ public:
     [[nodiscard]] virtual std::string qualifiedName() const = 0;
 
     /**
-     *
+     * Fills the stringstream with the code to include (and configure) this encoding
      */
     virtual void fillCode(std::stringstream& code) const = 0;
 
@@ -72,7 +72,6 @@ public:
 
     /**
      * Returns the fully-qualified name of the parameter structure.
-     *
      */
     [[nodiscard]] virtual std::string parameterName() const { return ""; }
 

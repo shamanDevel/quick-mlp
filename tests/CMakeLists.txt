@@ -24,7 +24,7 @@ set(QUICKMLP_KERNEL_FILES
 set(QUICKMLP_TEST_FILES
     main.cpp
     catch.hpp
-
+    test_eval_simple.cpp
     )
 
 add_executable(qmlp-tests

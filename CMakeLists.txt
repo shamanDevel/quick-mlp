@@ -113,9 +113,11 @@ set(QUICKMLP_HEADERS
 set(QUICKMLP_RESOURCES
     include/qmlp/builtin-activations.json
 
+    include/qmlp/kernels/loops.cuh
     include/qmlp/kernels/tensor.cuh
     include/qmlp/kernels/encoding_identity.cuh
     include/qmlp/kernels/layer.cuh
+    include/qmlp/kernels/network.cuh
 )
 
 set(QUICKMLP_SOURCES

@@ -10,7 +10,7 @@ namespace internal
     {
         void operator()(void* const p) const
         {
-            CKL_SAFE_CALL(cudaFree(p));
+            CKL_SAFE_CALL_NO_THROW(cudaFree(p));
         }
     };
 }
@@ -59,6 +59,15 @@ void* Tensor::rawPtr()
         return std::get<void*>(data_);
     else
         return std::get< std::shared_ptr<void>>(data_).get();
+}
+
+void Tensor::zero_()
+{
+    int64_t lastIdx = 0;
+    for (int i = 0; i < ndim_; ++i)
+        lastIdx += strides_[i] * (sizes_[i] - 1);
+    size_t count = (lastIdx + 1) * BytesPerEntry[precision_];
+    CKL_SAFE_CALL(cudaMemset(rawPtr(), 0, count));
 }
 
 QUICKMLP_NAMESPACE_END

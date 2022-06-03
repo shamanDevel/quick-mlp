@@ -9,7 +9,7 @@
 
 namespace qmlp { namespace kernel {
 
-template<int InChannelsDiv16, int OutChannelsDiv16, bool Bias, typename Activation>
+template<int InChannelsDiv16, int OutChannelsDiv16, int HiddenStride, bool Bias, typename Activation>
 struct Layer
 {
     static constexpr int MaxChannelsDiv16 = InChannelsDiv16 > OutChannelsDiv16 ? InChannelsDiv16 : OutChannelsDiv16;
@@ -23,7 +23,7 @@ struct Layer
      * \param bias the pointer to the bias matrix or nullptr if Bias=false. Shared or global memory
      * \param statesInout pointer to the intermediate states, input and output in shared memory. Stride=MaxChannelDiv16*16.
      */
-    static void inference(const half* weights, const half* bias, half* statesInout)
+    __device__ static void inference(const half* weights, const half* bias, half* statesInout)
     {
         using namespace nvcuda::wmma;
         //weights
@@ -62,8 +62,8 @@ struct Layer
         //load input (B)
         for (int cin = 0; cin < InChannelsDiv16; ++cin)
         {
-            load_matrix_sync(b_frag[cin][0], statesInout + 16 * cin, MaxChannels);
-            load_matrix_sync(b_frag[cin][1], statesInout + 16 * cin + 16 * InChannels, MaxChannels);
+            load_matrix_sync(b_frag[cin][0], statesInout + 16 * cin, HiddenStride);
+            load_matrix_sync(b_frag[cin][1], statesInout + 16 * cin + 16 * HiddenStride, HiddenStride);
         }
 
         //matmul
@@ -91,8 +91,8 @@ struct Layer
         //copy to shared
         for (int cout = 0; cout < OutChannelsDiv16; ++cout)
         {
-            store_matrix_sync(statesInout + 16 * cout, c_frag[cout][0], MaxChannels, mem_col_major);
-            store_matrix_sync(statesInout + 16 * cout + 16 * OutChannels, c_frag[cout][1], MaxChannels, mem_col_major);
+            store_matrix_sync(statesInout + 16 * cout, c_frag[cout][0], HiddenStride, mem_col_major);
+            store_matrix_sync(statesInout + 16 * cout + 16 * HiddenStride, c_frag[cout][1], HiddenStride, mem_col_major);
         }
     }
 };
