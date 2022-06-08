@@ -226,10 +226,8 @@ endif()
 
 
 # BUILD_TESTING takes priority, but only if this is the master project
-if(QUICKMLP_MASTER_PROJECT AND DEFINED BUILD_TESTING)
-  if(BUILD_TESTING)
+if(QUICKMLP_MASTER_PROJECT AND BUILD_TESTING)
     add_subdirectory(tests)
-  endif()
 else()
   if(QUICKMLP_TEST)
     add_subdirectory(tests)

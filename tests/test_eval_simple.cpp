@@ -18,10 +18,11 @@ TEST_CASE("compilation-test", "[simple]")
     }
 
     int N = 4267;
+    std::default_random_engine rng;
 
     //create network
     auto network = std::make_shared<qmlp::FusedNetwork>(cfg, configFolder);
-    WARN("network parameters: ", network->networkParameterCount());
+    WARN("network parameters: " << network->networkParameterCount());
 
     //create parameter tensor
     qmlp::Tensor parameters(
@@ -29,6 +30,7 @@ TEST_CASE("compilation-test", "[simple]")
         { network->networkParameterCount() });
     parameters.zero_();
     network->setNetworkParameter(parameters, qmlp::Tensor::INFERENCE);
+    network->initializeInferenceParameters(rng);
 
     //create input and output tensors
     qmlp::Tensor input( network->precisionIn(), { N, network->channelsIn() });

@@ -25,6 +25,7 @@ set(QUICKMLP_TEST_FILES
     main.cpp
     catch.hpp
     test_eval_simple.cpp
+    test_against_eigen.cpp
     )
 
 add_executable(qmlp-tests
@@ -38,6 +39,11 @@ set_target_properties(qmlp-tests PROPERTIES
 
 target_link_libraries(qmlp-tests
     PRIVATE qmlp::qmlp CUDA::cudart)
+    
+# Eigen
+set(BUILD_TESTING OFF)
+add_subdirectory(Eigen)
+target_link_libraries(qmlp-tests PRIVATE Eigen3::Eigen)
 
 # Compile with compiler warnings turned on
 if(MSVC)
