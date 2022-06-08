@@ -12,6 +12,7 @@ FusedNetwork::FusedNetwork(const nlohmann::json& cfg, const std::filesystem::pat
     , channelsOut_(cfg.at("num_outputs").get<int>())
     , networkInputPadding_(0)
     , numParameters_(0)
+    , perEntryForwardMemoryBytes_(0)
 {
     //kernel loader
     auto loader = QuickMLP::Instance().kernelLoader();
@@ -140,6 +141,21 @@ FusedNetwork::FusedNetwork(const nlohmann::json& cfg, const std::filesystem::pat
         specs.biasStart = numParameters_;
         numParameters_ += specs.channelsOut;
     }
+
+    //create streams for training
+    trainingStreams_.resize(2 * layers_.size());
+    for (size_t i=0; i<trainingStreams_.size(); ++i)
+    {
+        CKL_SAFE_CALL(cudaStreamCreateWithFlags(&trainingStreams_[i], cudaStreamNonBlocking));
+    }
+}
+
+FusedNetwork::~FusedNetwork()
+{
+    for (size_t i = 0; i < trainingStreams_.size(); ++i)
+    {
+        CKL_SAFE_CALL_NO_THROW(cudaStreamDestroy(trainingStreams_[i]));
+    }
 }
 
 IEncoding_ptr FusedNetwork::encoding(int idx)
@@ -187,20 +203,51 @@ void FusedNetwork::setNetworkParameter(const Tensor& tensor, Tensor::Usage usage
     }
 }
 
-Tensor FusedNetwork::networkParameter(int layer, bool bias, Tensor::Usage usage)
+void FusedNetwork::initializeInferenceParameters(std::default_random_engine& rng)
+{
+    if (!parametersInference_.defined())
+        throw std::runtime_error("Inference parameters not defined, call setNetworkParameter(...) first");
+    assert(parametersInference_.precision() == Tensor::HALF);
+
+    //create host memory
+    std::vector<half> dataHost(parametersInference_.numel());
+
+    //fill layers
+    for (int layer=0; layer<numLayers(); ++layer)
+    {
+        const auto& l = layers_[layer];
+        //kaiman uniform
+        float bound = 1.0f / std::sqrtf(l.channelsIn);
+        std::uniform_real_distribution<float> distr1(-bound, +bound);
+        //weights
+        Tensor weights = networkParameter(layer, false, dataHost.data(), Tensor::HALF);
+        for (int32_t i = 0; i < weights.size(0); ++i)
+            for (int32_t j = 0; j < weights.size(1); ++j)
+                weights.dataPtr<half>()[weights.idx({ i, j })] = __float2half(distr1(rng));
+        //bias
+        Tensor bias = networkParameter(layer, true, dataHost.data(), Tensor::HALF);
+        for (int32_t i = 0; i < bias.size(0); ++i)
+            bias.dataPtr<half>()[bias.idx({ i })] = __float2half(distr1(rng));
+    }
+
+    //copy to GPU
+    CKL_SAFE_CALL(cudaMemcpy(parametersInference_.rawPtr(), dataHost.data(),
+        parametersInference_.numel() * sizeof(half), cudaMemcpyHostToDevice));
+}
+
+Tensor FusedNetwork::networkParameter(int layer, bool bias, void* rawPtr, Tensor::Precision precision)
 {
     if (layer < 0 || layer >= layers_.size())
         throw std::runtime_error("Layer index out of bounds");
     const auto& l = layers_[layer];
 
-    auto& p = usage == Tensor::INFERENCE ? parametersInference_ : parametersGradients_;
-    int8_t* data = static_cast<int8_t*>(p.rawPtr());
-    int bytesPerEntry = Tensor::BytesPerEntry[p.precision()];
+    int8_t* data = static_cast<int8_t*>(rawPtr);
+    int bytesPerEntry = Tensor::BytesPerEntry[precision];
     if (bias)
     {
         return Tensor(
             data + bytesPerEntry * l.biasStart,
-            p.precision(),
+            precision,
             { l.channelsOut }, { 1 }
         );
     }
@@ -208,10 +255,16 @@ Tensor FusedNetwork::networkParameter(int layer, bool bias, Tensor::Usage usage)
     {
         return Tensor(
             data + bytesPerEntry * l.weightsStart,
-            p.precision(),
+            precision,
             { l.channelsOut, l.channelsIn }, { l.channelsIn, 1 }
         );
     }
+}
+
+Tensor FusedNetwork::networkParameter(int layer, bool bias, Tensor::Usage usage)
+{
+    auto& p = usage == Tensor::INFERENCE ? parametersInference_ : parametersGradients_;
+    return networkParameter(layer, bias, p.rawPtr(), p.precision());
 }
 
 static void replaceAll(std::string& s, const std::string& search, const std::string& replace) {
@@ -227,30 +280,18 @@ static void replaceAll(std::string& s, const std::string& search, const std::str
     }
 }
 
-void FusedNetwork::inference(const Tensor& input, Tensor& output, CUstream stream)
+std::string FusedNetwork::constantNameForEncoding(IEncoding_ptr e, int encodingIdx)
 {
-    CHECK_DIM(input, 2);
-    CHECK_DIM(output, 2);
-    CHECK_SIZE(input, 1, channelsIn());
-    CHECK_SIZE(output, 1, channelsOut());
-    int numel = input.size(0);
-    CHECK_SIZE(output, 0, numel);
-    CHECK_DTYPE(input, precisionIn());
-    CHECK_DTYPE(output, precisionOut());
+    return tinyformat::format("cEncoding%d", encodingIdx);
+}
 
-    auto kl = QuickMLP::Instance().kernelLoader();
-    std::string codeTemplate = kl->findFile("qmlp/kernels/network.cuh").value();
-
-    //GENERATE CODE
+void FusedNetwork::fillEncodingsAndActivations(std::string& codeTemplate,
+                                               std::vector<std::string>& encodingConstantNames)
+{
     //encodings
     std::stringstream encodingIncludes;
     std::stringstream encodingConstants;
-    std::vector<std::string> encodingConstantNames;
-    const auto constantNameForEncoding = [](IEncoding_ptr e, int encodingIdx)
-    {
-        return tinyformat::format("cEncoding%d", encodingIdx);
-    };
-    for (int encodingIdx=0; encodingIdx<encodings_.size(); ++encodingIdx)
+    for (int encodingIdx = 0; encodingIdx < encodings_.size(); ++encodingIdx)
     {
         auto e = encodings_[encodingIdx];
         e->fillCode(encodingIncludes);
@@ -272,7 +313,7 @@ void FusedNetwork::inference(const Tensor& input, Tensor& output, CUstream strea
     {
         for (const auto& a : l.activations)
         {
-            if (activationIDs.count(a->id())==0)
+            if (activationIDs.count(a->id()) == 0)
             {
                 activationDefinitions << a->code() << "\n";
                 activationIDs.insert(a->id());
@@ -281,6 +322,18 @@ void FusedNetwork::inference(const Tensor& input, Tensor& output, CUstream strea
     }
     replaceAll(codeTemplate, "$$DEFINE_ACTIVATIONS$$", activationDefinitions.str());
 
+}
+
+void FusedNetwork::compileInferenceKernel()
+{
+    if (inferenceKernel_.has_value()) return;
+
+    auto kl = QuickMLP::Instance().kernelLoader();
+    std::string codeTemplate = kl->findFile("qmlp/kernels/network_forward.cuh").value();
+
+    //GENERATE CODE
+    std::vector<std::string> encodingConstantNames;
+    fillEncodingsAndActivations(codeTemplate, encodingConstantNames);
     //constants
     int maxChannels = 0;
     for (const auto& l : layers_)
@@ -324,12 +377,12 @@ void FusedNetwork::inference(const Tensor& input, Tensor& output, CUstream strea
             ", " << maxChannels << ", " << (l.useBias ? "true" : "false") << ", " <<
             "activations::" << l.activations[0]->id() << ">";
         //parameters
-        callLayers << "::inference(networkParameters+" << l.weightsStart << ", ";
+        callLayers << "::template inference<false>(networkParameters+" << l.weightsStart << ", ";
         if (l.useBias)
             callLayers << "networkParameters+" << l.biasStart << ", ";
         else
             callLayers << "nullptr, ";
-        callLayers << "intermediateResultsWarp);\n";
+        callLayers << "intermediateResultsWarp, nullptr);\n";
     }
     replaceAll(codeTemplate, "$$CALL_NETWORK_LAYERS$$", callLayers.str());
 
@@ -340,10 +393,57 @@ void FusedNetwork::inference(const Tensor& input, Tensor& output, CUstream strea
         | ckl::KernelLoader::CompilationFlags::CompileVerboseLogging;
 #endif
     ckl::KernelFunction fun = kl->getKernel(
-        "qmlp::kernel::NetworkKernelInference",
+        "qmlp::kernel::NetworkKernelInferenceAndForward",
         codeTemplate,
         encodingConstantNames,
         compileFlags).value();
+
+    //compute shared memory
+    int bestBlockSize = fun.bestBlockSize();
+    int blockSize = bestBlockSize;
+    int sharedMemorySize = bestBlockSize * maxChannels * sizeof(half);
+    if (sharedMemorySize > MAX_SHARED_MEMORY_BYTES)
+    {
+        blockSize = MAX_SHARED_MEMORY_BYTES / (maxChannels * sizeof(half));
+        blockSize = (blockSize / 32) * 32; //round up to multiple of the warp size
+        std::cout << "It would be possible to fit more threads into each block in terms of register usage, but the shared memory is not enough. " <<
+            "Reducing the block size from " << bestBlockSize << " down to " << blockSize << std::endl;
+        sharedMemorySize = blockSize * maxChannels * sizeof(half);
+    }
+
+    //set cached kernel
+    CompiledKernel ck;
+    ck.fun = fun;
+    ck.blockSize = blockSize;
+    ck.sharedMemorySize = sharedMemorySize;
+    ck.encodingIdx2ConstantName.resize(encodings_.size());
+    for (int encodingIdx = 0; encodingIdx < encodings_.size(); ++encodingIdx)
+    {
+        auto e = encodings_[encodingIdx];
+        if (e->hasParameters())
+        {
+            std::string constantName = constantNameForEncoding(e, encodingIdx);
+            ck.encodingIdx2ConstantName[encodingIdx] = constantName;
+            ck.encodingPtr2ConstantName[e] = constantName;
+        }
+    }
+
+    inferenceKernel_ = std::move(ck);
+}
+
+void FusedNetwork::inference(const Tensor& input, Tensor& output, CUstream stream)
+{
+    CHECK_DIM(input, 2);
+    CHECK_DIM(output, 2);
+    CHECK_SIZE(input, 1, channelsIn());
+    CHECK_SIZE(output, 1, channelsOut());
+    int numel = input.size(0);
+    CHECK_SIZE(output, 0, numel);
+    CHECK_DTYPE(input, precisionIn());
+    CHECK_DTYPE(output, precisionOut());
+
+    //compile kernel
+    compileInferenceKernel();
 
     //CONSTANTS
     //fill constants of the encodings
@@ -352,17 +452,115 @@ void FusedNetwork::inference(const Tensor& input, Tensor& output, CUstream strea
         auto e = encodings_[encodingIdx];
         if (e->hasParameters())
         {
-            std::string constantName = constantNameForEncoding(e, encodingIdx);
-            e->fillParameterConstant(constantName, fun, stream);
+            std::string constantName = inferenceKernel_->encodingIdx2ConstantName[encodingIdx];
+            e->fillParameterConstant(constantName, inferenceKernel_->fun, stream);
         }
     }
 
     //LAUNCH KERNEL
+    int minGridSize = std::min(
+        CKL_DIV_UP(numel, inferenceKernel_->blockSize), 
+        inferenceKernel_->fun.minGridSize());
+    std::cout << "Launch with a block size of " << inferenceKernel_->blockSize << " and a shared memory size of " <<
+        inferenceKernel_->sharedMemorySize << std::endl;
+    //launch
+    auto inputAcc = input.accessor<kernel::Tensor2Read<float>>();
+    auto outputAcc = output.accessor<kernel::Tensor2RW<float>>();
+    const half* networkParams = parametersInference_.dataPtr<half>();
+    inferenceKernel_->fun.call(
+        minGridSize, inferenceKernel_->blockSize, inferenceKernel_->sharedMemorySize, stream,
+        numel, inputAcc, outputAcc, networkParams, nullptr);
+}
+
+void FusedNetwork::compileForwardKernel()
+{
+    if (forwardKernel_.has_value()) return;
+    int perEntryForwardMemoryHalf = 0;
+
+    auto kl = QuickMLP::Instance().kernelLoader();
+    std::string codeTemplate = kl->findFile("qmlp/kernels/network_forward.cuh").value();
+
+    //GENERATE CODE
+    std::vector<std::string> encodingConstantNames;
+    fillEncodingsAndActivations(codeTemplate, encodingConstantNames);
+    //constants
+    int maxChannels = 0;
+    for (const auto& l : layers_)
+        maxChannels = std::max({ maxChannels, l.channelsIn, l.channelsOut });
+    int inputPadStart = 0;
+    for (const auto& e : encodings_)
+        inputPadStart = std::max(inputPadStart, e->maxInputChannel() + 1);
+    int channelsIn = layers_.begin()->channelsIn;
+    int channelsOut = layers_.rbegin()->channelsOut;
+    replaceAll(codeTemplate, "$$MAX_CHANNELS$", std::to_string(maxChannels));
+    replaceAll(codeTemplate, "$$INPUT_PAD_START$$", std::to_string(inputPadStart));
+    replaceAll(codeTemplate, "$$CHANNELS_IN$$", std::to_string(channelsIn));
+    replaceAll(codeTemplate, "$$CHANNELS_OUT$$", std::to_string(channelsOut));
+
+    //call encodings
+    std::stringstream callEncodings;
+    int encodingOffset = 0;
+    for (int encodingIdx = 0; encodingIdx < encodings_.size(); ++encodingIdx)
+    {
+        auto e = encodings_[encodingIdx];
+        callEncodings << e->qualifiedName() << "::forward(encodingInput, encodingOutput + " <<
+            encodingOffset;
+        encodingOffset += e->numOutputChannels();
+        if (e->hasParameters())
+        {
+            std::string constantName = constantNameForEncoding(e, encodingIdx);
+            callEncodings << ", " << constantName;
+        }
+        callEncodings << ");\n";
+    }
+    replaceAll(codeTemplate, "$$CALL_ENCODINGS$$", callEncodings.str());
+
+    //call layers
+    //TODO: prefetch weights in shared memory?
+    std::stringstream callLayers;
+    for (const auto& l : layers_)
+    {
+        //type
+        if (l.activations.size() > 1) throw std::runtime_error("Individual activations per channel are not implemented yet");
+        callLayers << "qmlp::kernel::Layer<" << (l.channelsIn / 16) << ", " << (l.channelsOut / 16) <<
+            ", " << maxChannels << ", " << (l.useBias ? "true" : "false") << ", " <<
+            "activations::" << l.activations[0]->id() << ">";
+        //parameters
+        callLayers << "::template inference<true>(networkParameters+" << l.weightsStart << ", ";
+        if (l.useBias)
+            callLayers << "networkParameters+" << l.biasStart << ", ";
+        else
+            callLayers << "nullptr, ";
+        callLayers << "intermediateResultsWarp, ";
+        //storage for the intermediate states
+        //offset into forwardTmpMemory:
+        // prefix sum of the previous layers (perEntryForwardMemoryHalf) * numel
+        // + 32 * channelsOut * warpID
+        callLayers << "forwardTmpMemory + (" << perEntryForwardMemoryHalf << "*numel"
+            << " + 32*" << l.channelsOut << "*warpID) ";
+        perEntryForwardMemoryHalf += l.channelsOut;
+        //end function
+        callLayers << ");\n";
+    }
+    replaceAll(codeTemplate, "$$CALL_NETWORK_LAYERS$$", callLayers.str());
+
+    //COMPILE
+    int compileFlags = ckl::KernelLoader::CompilationFlags::CompileThrowOnError;
+#ifndef NDEBUG
+    compileFlags |= ckl::KernelLoader::CompilationFlags::CompileDebugMode
+        | ckl::KernelLoader::CompilationFlags::CompileVerboseLogging;
+#endif
+    ckl::KernelFunction fun = kl->getKernel(
+        "qmlp::kernel::NetworkKernelInferenceAndForward",
+        codeTemplate,
+        encodingConstantNames,
+        compileFlags).value();
+
     //compute shared memory
     int bestBlockSize = fun.bestBlockSize();
     int blockSize = bestBlockSize;
     int sharedMemorySize = bestBlockSize * maxChannels * sizeof(half);
-    if (sharedMemorySize>MAX_SHARED_MEMORY_BYTES)
+    if (sharedMemorySize > MAX_SHARED_MEMORY_BYTES)
     {
         blockSize = MAX_SHARED_MEMORY_BYTES / (maxChannels * sizeof(half));
         blockSize = (blockSize / 32) * 32; //round up to multiple of the warp size
@@ -370,17 +568,299 @@ void FusedNetwork::inference(const Tensor& input, Tensor& output, CUstream strea
             "Reducing the block size from " << bestBlockSize << " down to " << blockSize << std::endl;
         sharedMemorySize = blockSize * maxChannels * sizeof(half);
     }
+
+    //set cached kernel
+    CompiledKernel ck;
+    ck.fun = fun;
+    ck.blockSize = blockSize;
+    ck.sharedMemorySize = sharedMemorySize;
+    ck.encodingIdx2ConstantName.resize(encodings_.size());
+    for (int encodingIdx = 0; encodingIdx < encodings_.size(); ++encodingIdx)
+    {
+        auto e = encodings_[encodingIdx];
+        if (e->hasParameters())
+        {
+            std::string constantName = constantNameForEncoding(e, encodingIdx);
+            ck.encodingIdx2ConstantName[encodingIdx] = constantName;
+            ck.encodingPtr2ConstantName[e] = constantName;
+        }
+    }
+
+    forwardKernel_ = std::move(ck);
+    perEntryForwardMemoryBytes_ = perEntryForwardMemoryHalf * sizeof(half);
+}
+
+size_t FusedNetwork::forwardMemory(int numElements, AdjointModeFlags adjointFlags)
+{
+    //compile kernel
+    compileForwardKernel();
+
+    bool hasWeightGradients = adjointFlags & GRADIENTS_NETWORK_WEIGHTS;
+    return perEntryForwardMemoryBytes_ * static_cast<size_t>(numElements) * 
+        (hasWeightGradients ? 2 : 1);
+}
+
+size_t FusedNetwork::forwardMemory(const Tensor& input, AdjointModeFlags adjointFlags)
+{
+    CHECK_DIM(input, 2);
+    CHECK_SIZE(input, 1, channelsIn());
+    int numel = input.size(0);
+    return forwardMemory(numel, adjointFlags);
+}
+
+void FusedNetwork::forward(const Tensor& input, Tensor& output, void* tmpMemory, CUstream stream)
+{
+    CHECK_DIM(input, 2);
+    CHECK_DIM(output, 2);
+    CHECK_SIZE(input, 1, channelsIn());
+    CHECK_SIZE(output, 1, channelsOut());
+    int numel = input.size(0);
+    CHECK_SIZE(output, 0, numel);
+    CHECK_DTYPE(input, precisionIn());
+    CHECK_DTYPE(output, precisionOut());
+
+    //compile kernel
+    compileForwardKernel();
+
+    //CONSTANTS
+    //fill constants of the encodings
+    for (int encodingIdx = 0; encodingIdx < encodings_.size(); ++encodingIdx)
+    {
+        auto e = encodings_[encodingIdx];
+        if (e->hasParameters())
+        {
+            std::string constantName = forwardKernel_->encodingIdx2ConstantName[encodingIdx];
+            e->fillParameterConstant(constantName, forwardKernel_->fun, stream);
+        }
+    }
+
+    //LAUNCH KERNEL
     int minGridSize = std::min(
-        CKL_DIV_UP(numel, blockSize), 
-        fun.minGridSize());
-    std::cout << "Launch with a block size of " << blockSize << " and a shared memory size of " <<
-        sharedMemorySize << std::endl;
+        CKL_DIV_UP(numel, forwardKernel_->blockSize),
+        forwardKernel_->fun.minGridSize());
+    std::cout << "Launch with a block size of " << forwardKernel_->blockSize << " and a shared memory size of " <<
+        forwardKernel_->sharedMemorySize << std::endl;
     //launch
     auto inputAcc = input.accessor<kernel::Tensor2Read<float>>();
-    auto outputAcc = input.accessor<kernel::Tensor2RW<float>>();
+    auto outputAcc = output.accessor<kernel::Tensor2RW<float>>();
     const half* networkParams = parametersInference_.dataPtr<half>();
-    fun.call(minGridSize, blockSize, sharedMemorySize, stream, 
-        numel, inputAcc, outputAcc, networkParams);
+    half* tmpMemoryHalf = static_cast<half*>(tmpMemory);
+    forwardKernel_->fun.call(
+        minGridSize, forwardKernel_->blockSize, forwardKernel_->sharedMemorySize, stream,
+        numel, inputAcc, outputAcc, networkParams, tmpMemoryHalf);
+}
+
+void FusedNetwork::zeroGradients()
+{
+    if (parametersGradients_.defined())
+        parametersGradients_.zero_();
+    for (auto& e : encodings_)
+        e->zeroGradients();
+}
+
+void FusedNetwork::compileBackwardKernel(int flags)
+{
+    if (backwardKernel_[flags].has_value()) return;
+    const bool hasInputGradients = flags & GRADIENTS_INPUT;
+    const bool hasNetworkGradients = flags & GRADIENTS_NETWORK_WEIGHTS;
+    const bool hasEncodingGradients = flags & GRADIENTS_INPUT_ENCODINGS;
+    if (!hasInputGradients && !hasNetworkGradients && !hasEncodingGradients)
+        throw std::runtime_error("At least one derivative must be enabled");
+
+    AdjointKernel ak;
+    ak.layers.resize(layers_.size());
+
+    auto kl = QuickMLP::Instance().kernelLoader();
+    std::string codeTemplate = kl->findFile("qmlp/kernels/network_backward.cuh").value();
+
+    //GENERATE CODE
+    std::vector<std::string> encodingConstantNames;
+    fillEncodingsAndActivations(codeTemplate, encodingConstantNames);
+    //constants
+    int maxChannels = 0;
+    for (const auto& l : layers_)
+        maxChannels = std::max({ maxChannels, l.channelsIn, l.channelsOut });
+    int inputPadStart = 0;
+    for (const auto& e : encodings_)
+        inputPadStart = std::max(inputPadStart, e->maxInputChannel() + 1);
+    int channelsIn = layers_.begin()->channelsIn;
+    int channelsOut = layers_.rbegin()->channelsOut;
+    replaceAll(codeTemplate, "$$MAX_CHANNELS$", std::to_string(maxChannels));
+    replaceAll(codeTemplate, "$$INPUT_PAD_START$$", std::to_string(inputPadStart));
+    replaceAll(codeTemplate, "$$CHANNELS_IN$$", std::to_string(channelsIn));
+    replaceAll(codeTemplate, "$$CHANNELS_OUT$$", std::to_string(channelsOut));
+    replaceAll(codeTemplate, "$$HAS_INPUT_GRADIENTS$$", hasInputGradients?"true":"false");
+
+    //call layers
+    //TODO: prefetch weights in shared memory?
+    std::stringstream callLayers;
+    int perEntryForwardMemoryHalf = 0;
+    int perEntryForwardMemoryHalfPrevious = 0;
+    for (size_t i=0; i<layers_.size(); ++i)
+    {
+        const auto& l = layers_[i];
+        auto& ali = ak.layers[i];
+        if (i == 0)
+            ali.offsetIn = -1;
+        else
+            ali.offsetIn = perEntryForwardMemoryHalfPrevious;
+        ali.offsetAdjOut = perEntryForwardMemoryHalf;
+        perEntryForwardMemoryHalfPrevious = perEntryForwardMemoryHalf;
+        //type
+        if (l.activations.size() > 1) throw std::runtime_error("Individual activations per channel are not implemented yet");
+        callLayers << "qmlp::kernel::Layer<" << (l.channelsIn / 16) << ", " << (l.channelsOut / 16) <<
+            ", " << maxChannels << ", " << (l.useBias ? "true" : "false") << ", " <<
+            "activations::" << l.activations[0]->id() << ">";
+        //parameters
+        callLayers << "::template adjoint< " <<
+            (hasNetworkGradients ? "true" : "false") << " > (\n" <<
+            "   networkParameters+" << l.weightsStart << ", ";
+        if (l.useBias)
+            callLayers << "networkParameters+" << l.biasStart << ", ";
+        else
+            callLayers << "nullptr, ";
+        callLayers << "intermediateResultsWarp, \n" <<
+            "    forwardTmpMemory + (" << perEntryForwardMemoryHalf << "*numel" << " + 32*" << l.channelsOut << "*warpID), " <<
+            "adjointTmpMemory + (" << perEntryForwardMemoryHalf << "*numel" << " + 32*" << l.channelsOut << "*warpID) );\n";
+        perEntryForwardMemoryHalf += l.channelsOut;
+    }
+    replaceAll(codeTemplate, "$$CALL_NETWORK_LAYERS$$", callLayers.str());
+
+
+    //call encodings
+    std::stringstream callEncodings;
+    int encodingOffset = 0;
+    for (int encodingIdx = 0; encodingIdx < encodings_.size(); ++encodingIdx)
+    {
+        auto e = encodings_[encodingIdx];
+        callEncodings << e->qualifiedName() << "::template adjoint<" <<
+            (hasInputGradients ? "true" : "false") << ", " <<
+            (hasEncodingGradients ? "true" : "false") <<
+            "(encodingInput, adjEncodingOutput + " << encodingOffset <<
+            ", adjEncodingInput";
+        encodingOffset += e->numOutputChannels();
+        if (e->hasParameters())
+        {
+            std::string constantName = constantNameForEncoding(e, encodingIdx);
+            callEncodings << ", " << constantName;
+        }
+        callEncodings << ");\n";
+    }
+    replaceAll(codeTemplate, "$$CALL_ENCODINGS$$", callEncodings.str());
+
+    //COMPILE
+    int compileFlags = ckl::KernelLoader::CompilationFlags::CompileThrowOnError;
+#ifndef NDEBUG
+    compileFlags |= ckl::KernelLoader::CompilationFlags::CompileDebugMode
+        | ckl::KernelLoader::CompilationFlags::CompileVerboseLogging;
+#endif
+    ckl::KernelFunction fun = kl->getKernel(
+        "qmlp::kernel::NetworkKernelInferenceAndForward",
+        codeTemplate,
+        encodingConstantNames,
+        compileFlags).value();
+
+    //compute shared memory
+    int bestBlockSize = fun.bestBlockSize();
+    int blockSize = bestBlockSize;
+    int sharedMemorySize = bestBlockSize * maxChannels * sizeof(half);
+    if (sharedMemorySize > MAX_SHARED_MEMORY_BYTES)
+    {
+        blockSize = MAX_SHARED_MEMORY_BYTES / (maxChannels * sizeof(half));
+        blockSize = (blockSize / 32) * 32; //round up to multiple of the warp size
+        std::cout << "It would be possible to fit more threads into each block in terms of register usage, but the shared memory is not enough. " <<
+            "Reducing the block size from " << bestBlockSize << " down to " << blockSize << std::endl;
+        sharedMemorySize = blockSize * maxChannels * sizeof(half);
+    }
+
+    //set cached kernel
+    ak.adjoint.fun = fun;
+    ak.adjoint.blockSize = blockSize;
+    ak.adjoint.sharedMemorySize = sharedMemorySize;
+    ak.adjoint.encodingIdx2ConstantName.resize(encodings_.size());
+    for (int encodingIdx = 0; encodingIdx < encodings_.size(); ++encodingIdx)
+    {
+        auto e = encodings_[encodingIdx];
+        if (e->hasParameters())
+        {
+            std::string constantName = constantNameForEncoding(e, encodingIdx);
+            ak.adjoint.encodingIdx2ConstantName[encodingIdx] = constantName;
+            ak.adjoint.encodingPtr2ConstantName[e] = constantName;
+        }
+    }
+
+    //TODO: kernels for gradient reduction of weight+bias
+
+    backwardKernel_[flags] = std::move(ak);
+}
+
+void FusedNetwork::adjoint(const Tensor& input, const Tensor& adjOutput, AdjointModeFlags adjointFlags,
+    Tensor& adjInput, const void* tmpMemory, CUstream stream)
+{
+    CHECK_DIM(input, 2);
+    CHECK_DIM(adjOutput, 2);
+    CHECK_SIZE(input, 1, channelsIn());
+    CHECK_SIZE(adjOutput, 1, channelsOut());
+    int numel = input.size(0);
+    CHECK_SIZE(adjOutput, 0, numel);
+    CHECK_DTYPE(input, precisionIn());
+    CHECK_DTYPE(adjOutput, precisionOut());
+
+    const bool hasInputGradients = adjointFlags & GRADIENTS_INPUT;
+    if (hasInputGradients)
+    {
+        CHECK_ERROR(adjInput.defined(), "Input gradients requested, but adjInput is undefined");
+        CHECK_DIM(adjInput, 2);
+        CHECK_SIZE(adjInput, 1, channelsIn());
+        CHECK_SIZE(adjInput, 0, numel);
+        CHECK_DTYPE(adjInput, precisionIn());
+    }
+
+    //compile kernel
+    compileBackwardKernel(adjointFlags);
+    auto& ak = backwardKernel_[adjointFlags].value();
+
+    //CONSTANTS
+    //fill constants of the encodings
+    for (int encodingIdx = 0; encodingIdx < encodings_.size(); ++encodingIdx)
+    {
+        auto e = encodings_[encodingIdx];
+        if (e->hasParameters())
+        {
+            std::string constantName = ak.adjoint.encodingIdx2ConstantName[encodingIdx];
+            e->fillParameterConstant(constantName, ak.adjoint.fun, stream);
+        }
+    }
+
+    //LAUNCH KERNEL for the main network
+    int minGridSize = std::min(
+        CKL_DIV_UP(numel, ak.adjoint.blockSize),
+        ak.adjoint.fun.minGridSize());
+    std::cout << "Launch with a block size of " << ak.adjoint.blockSize << " and a shared memory size of " <<
+        ak.adjoint.sharedMemorySize << std::endl;
+    //launch
+    auto inputAcc = input.accessor<kernel::Tensor2Read<float>>();
+    auto adjOutputAcc = adjOutput.accessor<kernel::Tensor2Read<float>>();
+    kernel::Tensor2RW<float> adjInputAcc;
+    if (hasInputGradients) adjInputAcc = adjInput.accessor<kernel::Tensor2RW<float>>();
+    const half* networkParams = parametersInference_.dataPtr<half>();
+    const half* forwardTmpMemory = static_cast<const half*>(tmpMemory);
+    const half* adjointTmpMemory = forwardTmpMemory + (numel * perEntryForwardMemoryBytes_ * sizeof(half));
+    ak.adjoint.fun.call(
+        minGridSize, ak.adjoint.blockSize, ak.adjoint.sharedMemorySize, stream,
+        numel, inputAcc, adjOutputAcc, adjInputAcc, networkParams, forwardTmpMemory, adjointTmpMemory);
+
+    //LAUNCH CUTLASS reductions for the weight+bias
+    //TODO implement CUTLASS launches
+    //and enqueue events
+}
+
+void FusedNetwork::clearCachedKernels()
+{
+    inferenceKernel_ = {};
+    forwardKernel_ = {};
+    for (int i = 0; i < ADJOINT_MODE_MAX_COMBINATIONS; ++i)
+        backwardKernel_[i] = {};
 }
 
 

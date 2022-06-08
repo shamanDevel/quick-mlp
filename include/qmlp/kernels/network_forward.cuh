@@ -29,11 +29,12 @@ namespace activations
     $$DEFINE_ACTIVATIONS$$
 }
 
-__global__ void NetworkKernelInference(
+__global__ void NetworkKernelInferenceAndForward(
     int numel,
     const Tensor2Read<float> inputs, //shape (numel, Cin)
     Tensor2RW<float> outputs, //shape (numel, Cout)
-    const half* networkParameters
+    const half* networkParameters,
+    half* forwardTmpMemory //for storing the intermediate results in the forward pass
     )
 {
     constexpr int MAX_CHANNELS = $$MAX_CHANNELS$;

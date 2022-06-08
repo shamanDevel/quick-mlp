@@ -23,8 +23,8 @@ QUICKMLP_NAMESPACE_BEGIN
  *     template<typename I>
  *     static __device__ void forward(const I input, half* output [, const param-type& param-name ]);
  *
- *     template<typename I, bool EvaluateInputGradients, bool EvaluateParameterGradients>
- *     static __device__ void adjoint(const I input, const half* adjOutput, float* adjInput [, const param-type& param-name ]);
+ *     template<bool EvaluateInputGradients, bool EvaluateParameterGradients, typename I, typename O>
+ *     static __device__ void adjoint(const I& input, const half* adjOutput, O& adjInput [, const param-type& param-name ]);
  * }
  * </code>
  * The input type provides a subscript operator <code>float operator[](size_t idx)</code>
@@ -94,6 +94,12 @@ public:
      */
     virtual void fillParameterConstant(
         const std::string& constantName, const ckl::KernelFunction& function, CUstream stream) {}
+
+    /**
+     * Zeros the gradients for the parameters of this encoding.
+     * No-op if the encoding has no parameters
+     */
+    virtual void zeroGradients() {}
 
 };
 typedef std::shared_ptr<IEncoding> IEncoding_ptr;

@@ -20,8 +20,8 @@ struct EncodingIdentity
         }
     }
 
-    template<typename I, bool EvaluateInputGradients, bool EvaluateParameterGradients>
-    static __device__ void adjoint(const I input, const half* adjOutput, float* adjInput)
+    template<bool EvaluateInputGradients, bool EvaluateParameterGradients, typename I, typename O>
+    static __device__ void adjoint(const I& input, const half* adjOutput, O& adjInput)
     {
         if constexpr(EvaluateInputGradients)
         {

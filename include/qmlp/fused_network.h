@@ -1,6 +1,9 @@
 #pragma once
 
 #include <cuda.h>
+#include <random>
+#include <unordered_map>
+#include <vector>
 
 #include "common.h"
 #include "tensor.h"
@@ -11,6 +14,24 @@
 QUICKMLP_NAMESPACE_BEGIN
 class FusedNetwork : NonAssignable
 {
+public:
+    /**
+     * additive flags specifying what gradients to compute in the adjoint pass
+     */
+    enum AdjointMode
+    {
+        //Compute gradients with respect to the network input
+        GRADIENTS_INPUT = 0x1,
+        //Compute gradients with respect to the network weights
+        GRADIENTS_NETWORK_WEIGHTS = 0x2,
+        //Compute gradients with respect to the input encodings
+        GRADIENTS_INPUT_ENCODINGS = 0x4,
+
+        ADJOINT_MODE_MAX_COMBINATIONS = 8
+    };
+    typedef int AdjointModeFlags;
+
+private:
     struct LayerSpecification
     {
         //specs from Json
@@ -38,7 +59,45 @@ class FusedNetwork : NonAssignable
     Tensor parametersInference_;
     Tensor parametersGradients_;
 
+    //compiled kernels
+    struct CompiledKernel
+    {
+        ckl::KernelFunction fun;
+        int blockSize;
+        int sharedMemorySize;
+        std::vector<std::string> encodingIdx2ConstantName;
+        std::unordered_map<IEncoding_ptr, std::string> encodingPtr2ConstantName;
+    };
+    std::optional<CompiledKernel> inferenceKernel_;
+    std::optional<CompiledKernel> forwardKernel_;
+
+    struct AdjointLayerInfo
+    {
+        //multiply with numel to get the offset into the adjoint-post-matmul array
+        int offsetAdjOut;
+        //multiply with numel to get the offset into the pre-activation array.
+        // for weight derivatives, the activation has to be applied on-the-fly again
+        //In the first layer, this value is -1, as the input encodings are needed again.
+        int offsetIn;
+
+        CompiledKernel adjWeightKernel;
+        CompiledKernel adjBiasKernel;
+    };
+    struct AdjointKernel
+    {
+        CompiledKernel adjoint;
+        std::vector<AdjointLayerInfo> layers;
+    };
+    std::optional<AdjointKernel> backwardKernel_[ADJOINT_MODE_MAX_COMBINATIONS];
+    //The number of bytes for storing the intermediate forward values.
+    //If network weights are optimized, this amount needs to be doubled
+    //because adjoint variables of those have to be stored in global memory
+    //for computing the network weights afterwards using CUTLASS
+    int perEntryForwardMemoryBytes_;
+
     //CUstreams for training
+    std::vector<CUstream> trainingStreams_;
+    std::vector<CUevent> trainingEvents_;
 
 public:
     //Size of the matrix fragments (hardware limitation of the tensor cores)
@@ -49,10 +108,14 @@ public:
     static constexpr int MAX_SHARED_MEMORY_BYTES = 48 * 1024;
 
     /**
-     * Constructs the inner network from the Json configuration 'cfg',
+     * \brief Constructs the inner network from the Json configuration 'cfg',
      * an array describing the individual layers.
+     *
+     * After constructing, the configuration is fixed and immutable.
+     * This way, the kernels can be compiled once and then cached.
      */
     FusedNetwork(const nlohmann::json& cfg, const std::filesystem::path& parent);
+    ~FusedNetwork();
 
     [[nodiscard]] const std::vector<IEncoding_ptr>& encodings() const { return encodings_; }
     [[nodiscard]] int numEncodings() const { return encodings_.size(); }
@@ -77,6 +140,18 @@ public:
     void setNetworkParameter(const Tensor& tensor, Tensor::Usage usage);
 
     /**
+     * Initializes the inference weights of the networks to random values.
+     * This follows the default initialization routine from PyTorch.
+     * The results are written into the inference tensor specified by
+     * \ref setNetworkParameter().
+     */
+    void initializeInferenceParameters(std::default_random_engine& rng);
+
+private:
+    Tensor networkParameter(int layer, bool bias, void* rawPtr, Tensor::Precision precision);
+
+public:
+    /**
      * \brief Returns the slice of the parameter corresponding
      * to the weight matrix (bias=false) or bias vector (bias=true)
      * of the specified layer 'layer'.
@@ -100,17 +175,86 @@ public:
      */
     void inference(const Tensor& input, Tensor& output, CUstream stream);
 
-    //TODO: training code
+    /**
+     * \brief Computes the memory in bytes required as temporary memory
+     * to store the intermediate results of the forward method.
+     * \param numElements the number of elements to process
+     * \param adjointFlags additive flags of AdjointMode specifying what to differentiate
+     * \return the number of bytes required to store the intermediate results
+     *   to process the specified inputs.
+     */
+    size_t forwardMemory(int numElements, AdjointModeFlags adjointFlags);
+
+    /**
+     * \brief Computes the memory in bytes required as temporary memory
+     * to store the intermediate results of the forward method.
+     * \param input the input to the forward method
+     * \param adjointFlags additive flags of AdjointMode specifying what to differentiate
+     * \return the number of bytes required to store the intermediate results
+     *   to process the specified inputs.
+     */
+    size_t forwardMemory(const Tensor& input, AdjointModeFlags adjointFlags);
+    
+    /**
+     * \brief Inference / forward pass with storing intermediate results
+     *  to allow for gradient propagation.
+     * After this method, you can compute the gradients via \ref adjoint()
+     *
+     * \param input the inputs to the network of shape (B, Cin)
+     * \param output the output of the network of shape (B, Cout)
+     * \param tmpMemory temporary memory on the GPU with \ref forwardMemory(Tensor) bytes
+     * \param stream the CUDA stream where the kernel is enqueued.
+     */
+    void forward(const Tensor& input, Tensor& output, void* tmpMemory, CUstream stream);
+
+    /**
+     * Zeros the gradients for the weights of the network and the
+     * gradients of the input encodings.
+     */
+    void zeroGradients();
+
+    /**
+     * \brief Performs the backpropagation / adjoint differentiation.
+     * This method follows a call to \ref forward() and computes the gradients.
+     * The gradients for the network weights are added to the gradient tensor specified
+     * by \ef setNetworkParameter() with <code>usage=Usage::Gradient</code>,
+     * same for the input encodings.
+     *
+     * Additionally, derivatives with respect to the inputs can be computed when
+     * \c adjInput is defined.
+     *
+     * \param input the input tensor from the forward pass
+     * \param adjOutput the adjoint of the output
+     * \param adjointFlags additive flags of AdjointMode specifying what to differentiate
+     * \param adjInput [optional] accumulates gradients with respect to the inputs
+     * \param tmpMemory temporary memory from the forward pass
+     * \param stream the CUDA stream where the kernel is enqueued.
+     */
+    void adjoint(const Tensor& input, const Tensor& adjOutput, AdjointModeFlags adjointFlags,
+        Tensor& adjInput, const void* tmpMemory, CUstream stream);
+    
+    /**
+     * For debugging, clears all cached kernels.
+     */
+    void clearCachedKernels();
 
 private:
 
-    /**
-     * Writes the parameters into the constant field denoted by 'constantName'.
-     * This field is then later passed to the evaluation kernel.
-     * \see ckl::KernelFunction::fillConstantMemoryAsync
-     */
-    void fillNetworkConstant(
-        const std::string& constantName, const ckl::KernelFunction& function, CUstream stream);
+    void compileInferenceKernel();
+    void compileForwardKernel();
+    void compileBackwardKernel(int flags);
+
+    std::string constantNameForEncoding(IEncoding_ptr e, int encodingIdx);
+    void fillEncodingsAndActivations(
+        std::string& codeTemplate, std::vector<std::string>& encodingConstantNames);
+
+    ///**
+    // * Writes the parameters into the constant field denoted by 'constantName'.
+    // * This field is then later passed to the evaluation kernel.
+    // * \see ckl::KernelFunction::fillConstantMemoryAsync
+    // */
+    //void fillNetworkConstant(
+    //    const std::string& constantName, const ckl::KernelFunction& function, CUstream stream);
 
 
 };

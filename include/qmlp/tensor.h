@@ -86,7 +86,7 @@ public:
     }
 
     /**
-     * \brief Constructs a Tensor instance that allocates and hosts the memory itself.
+     * \brief Constructs a Tensor instance that allocates GPU memory and hosts the memory itself.
      * \param precision the precision of the data
      * \param sizes the size per dimension
      */
@@ -118,6 +118,14 @@ public:
         return strides_;
     }
 
+    [[nodiscard]] int64_t numel() const
+    {
+        int64_t n = 1;
+        for (int i = 0; i < ndim_; ++i)
+            n *= sizes_[i];
+        return n;
+    }
+
     template<int N>
     [[nodiscard]] int64_t idx(const std::array<int32_t, N>& indices) const
     {
@@ -134,11 +142,23 @@ public:
         return idx;
     }
 
-    template<int32_t... Args>
-    [[nodiscard]]int64_t idx(int32_t args... ) const
+    [[nodiscard]] int64_t idx(std::initializer_list<int32_t> l)
     {
-        return idx(std::array<int32_t, sizeof...(args)>({ args... }));
+        assert(l.size() == ndim());
+        int64_t idx = 0;
+        for (int i = 0; i < l.size(); ++i) {
+            assert(l.begin()[i] >= 0);
+            assert(l.begin()[i] < sizes_[i]);
+            idx += l.begin()[i] * strides_[i];
+        }
+        return idx;
     }
+
+    //template<int32_t... Args>
+    //[[nodiscard]]int64_t idx(int32_t args... ) const
+    //{
+    //    return idx(std::array<int32_t, sizeof...(args)>({ args... }));
+    //}
 
     [[nodiscard]] const void* rawPtr() const;
     [[nodiscard]] void* rawPtr();

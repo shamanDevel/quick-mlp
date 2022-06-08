@@ -43,6 +43,7 @@ namespace qmlp {
         public:
             typedef typename PtrTraits<T>::PtrType PtrType;
 
+            __host__ __device__ TensorAccessorBase(){} //uninitialized
             __host__ __device__ TensorAccessorBase(
                 PtrType data_,
                 const index_t* sizes_,
@@ -75,6 +76,7 @@ namespace qmlp {
         public:
             typedef typename PtrTraits<T>::PtrType PtrType;
 
+            __host__ __device__ TensorAccessor() {} //uninitialized
             __host__ __device__ TensorAccessor(
                 PtrType data_,
                 const index_t* sizes_,
@@ -95,6 +97,7 @@ namespace qmlp {
         public:
             typedef typename PtrTraits<T>::PtrType PtrType;
 
+            __host__ __device__ TensorAccessor() {} //uninitialized
             __host__ __device__ TensorAccessor(
                 PtrType data_,
                 const index_t* sizes_,

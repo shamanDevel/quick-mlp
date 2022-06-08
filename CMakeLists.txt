@@ -117,7 +117,8 @@ set(QUICKMLP_RESOURCES
     include/qmlp/kernels/tensor.cuh
     include/qmlp/kernels/encoding_identity.cuh
     include/qmlp/kernels/layer.cuh
-    include/qmlp/kernels/network.cuh
+    include/qmlp/kernels/network_forward.cuh
+    include/qmlp/kernels/network_backward.cuh
 )
 
 set(QUICKMLP_SOURCES
