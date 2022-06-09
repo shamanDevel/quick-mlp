@@ -7,6 +7,10 @@
 
 #include <qmlp/fused_network.h>
 
+typedef Eigen::half EigenScalar_t;
+typedef Eigen::MatrixX<EigenScalar_t> EigenMatrixX;
+typedef Eigen::VectorX<EigenScalar_t> EigenVectorX;
+
 namespace {
     enum class TestActivationType
     {
@@ -20,23 +24,23 @@ namespace {
     template<>
     struct TestActivation<TestActivationType::RELU>
     {
-        static Eigen::MatrixXf forward(const Eigen::MatrixXf& x)
+        static EigenMatrixX forward(const EigenMatrixX& x)
         {
-            return x.cwiseMin(0.0f);
+            return x.cwiseMin(EigenScalar_t(0.0f));
         }
-        static Eigen::MatrixXf adjoint(const Eigen::MatrixXf& x, const Eigen::MatrixXf& adjz)
+        static EigenMatrixX adjoint(const EigenMatrixX& x, const EigenMatrixX& adjz)
         {
-            return ((x.array() > 0.f).cast<float>() * adjz.array()).matrix();
+            return ((x.array() > EigenScalar_t(0.f)).cast<EigenScalar_t>() * adjz.array()).matrix();
         }
     };
     template<>
     struct TestActivation<TestActivationType::SINE>
     {
-        static Eigen::MatrixXf forward(const Eigen::MatrixXf& x)
+        static EigenMatrixX forward(const EigenMatrixX& x)
         {
             return x.array().sin().matrix();
         }
-        static Eigen::MatrixXf adjoint(const Eigen::MatrixXf& x, const Eigen::MatrixXf& adjz)
+        static EigenMatrixX adjoint(const EigenMatrixX& x, const EigenMatrixX& adjz)
         {
             return (x.array().cos() * adjz.array()).matrix();
         }
@@ -44,17 +48,17 @@ namespace {
     template<>
     struct TestActivation<TestActivationType::IDENTITY>
     {
-        static Eigen::MatrixXf forward(const Eigen::MatrixXf& x)
+        static EigenMatrixX forward(const EigenMatrixX& x)
         {
             return x;
         }
-        static Eigen::MatrixXf adjoint(const Eigen::MatrixXf& x, const Eigen::MatrixXf& adjz)
+        static EigenMatrixX adjoint(const EigenMatrixX& x, const EigenMatrixX& adjz)
         {
             return adjz;
         }
     };
 
-    Eigen::MatrixXf toEigenMatrix(const qmlp::Tensor& tensor)
+    EigenMatrixX toEigenMatrix(const qmlp::Tensor& tensor)
     {
         REQUIRE(tensor.ndim() == 2);
 
@@ -62,24 +66,24 @@ namespace {
         std::vector<char> dataHost(tensor.numel() * tensor.bytesPerEntry());
         CKL_SAFE_CALL(cudaMemcpy(dataHost.data(), dataDevice, dataHost.size(), cudaMemcpyDeviceToHost));
 
-        Eigen::MatrixXf matrix(tensor.size(0), tensor.size(1));
+        EigenMatrixX matrix(tensor.size(0), tensor.size(1));
         if (tensor.precision() == qmlp::Tensor::FLOAT)
         {
             const float* data = reinterpret_cast<float*>(dataHost.data());
             for (int i = 0; i < tensor.size(0); ++i) for (int j = 0; j < tensor.size(1); ++j)
-                matrix(i, j) = data[tensor.idx({ i,j })];
+                matrix(i, j) = EigenScalar_t(data[tensor.idx({ i,j })]);
         }
         else if (tensor.precision() == qmlp::Tensor::HALF)
         {
             const half* data = reinterpret_cast<half*>(dataHost.data());
             for (int i = 0; i < tensor.size(0); ++i) for (int j = 0; j < tensor.size(1); ++j)
-                matrix(i, j) = __half2float(data[tensor.idx({ i,j })]);
+                matrix(i, j) = EigenScalar_t(__half2float(data[tensor.idx({ i,j })]));
         }
         else
             throw std::runtime_error("Unknown precision");
         return matrix;
     }
-    Eigen::VectorXf toEigenVector(const qmlp::Tensor& tensor)
+    EigenVectorX toEigenVector(const qmlp::Tensor& tensor)
     {
         REQUIRE(tensor.ndim() == 1);
 
@@ -87,24 +91,24 @@ namespace {
         std::vector<char> dataHost(tensor.numel() * tensor.bytesPerEntry());
         CKL_SAFE_CALL(cudaMemcpy(dataHost.data(), dataDevice, dataHost.size(), cudaMemcpyDeviceToHost));
 
-        Eigen::VectorXf matrix(tensor.size(0));
+        EigenVectorX matrix(tensor.size(0));
         if (tensor.precision() == qmlp::Tensor::FLOAT)
         {
             const float* data = reinterpret_cast<float*>(dataHost.data());
             for (int i = 0; i < tensor.size(0); ++i)
-                matrix[i] = data[tensor.idx({ i })];
+                matrix[i] = EigenScalar_t(data[tensor.idx({ i })]);
         }
         else if (tensor.precision() == qmlp::Tensor::HALF)
         {
             const half* data = reinterpret_cast<half*>(dataHost.data());
             for (int i = 0; i < tensor.size(0); ++i)
-                matrix[i] = __half2float(data[tensor.idx({ i })]);
+                matrix[i] = EigenScalar_t(__half2float(data[tensor.idx({ i })]));
         }
         else
             throw std::runtime_error("Unknown precision");
         return matrix;
     }
-    void toGpuTensor(qmlp::Tensor& dst, const Eigen::MatrixXf& src)
+    void toGpuTensor(qmlp::Tensor& dst, const EigenMatrixX& src)
     {
         REQUIRE(dst.ndim() == 2);
         REQUIRE(dst.size(0) == src.rows());
@@ -132,21 +136,27 @@ namespace {
     template <typename T> int sgn(T val) {
         return (T(0) < val) - (val < T(0));
     }
-    void compareEigen(const Eigen::MatrixXf& actual, const Eigen::MatrixXf& expected)
+    void compareEigen(const EigenMatrixX& actual, const EigenMatrixX& expected)
     {
         REQUIRE(actual.rows() == expected.rows());
         REQUIRE(actual.cols() == expected.cols());
+        static const float REL_ERROR = 0.1f; //10%
+        static const float ABS_ERROR = 1e-3f;
+        static const float ALLOWED_EXCEED = 0.01f; //1%
+        int numExceed = 0;
         for (int i = 0; i < actual.rows(); ++i) for (int j = 0; j < actual.cols(); ++j)
         {
-            INFO("i=" << i << ", j=" << j);
-            float va = actual(i, j);
-            float ve = expected(i, j);
-            INFO("actual=" << va << ", expected=" << ve);
-            REQUIRE(sgn(va) == sgn(ve));
-            float relDiff = va / ve;
-            const float eps = 5;
-            REQUIRE((1/eps < relDiff && relDiff < eps));
+            auto va = static_cast<float>(actual(i, j));
+            auto ve = static_cast<float>(expected(i, j));
+            bool correct = va == Approx(ve).epsilon(REL_ERROR).margin(ABS_ERROR);
+            if (!correct)
+            {
+                numExceed++;
+                UNSCOPED_INFO("i=" << i << ", j=" << j << " => actual=" << va << ", expected=" << ve);
+            }
         }
+        float exceedFraction = numExceed / static_cast<float>(expected.size());
+        REQUIRE(exceedFraction < ALLOWED_EXCEED);
     }
 }
 
@@ -217,26 +227,26 @@ TEMPLATE_TEST_CASE_SIG("test-agaist-eigen", "[eigen]",
     //create input and output tensors
     qmlp::Tensor inputDevice(network->precisionIn(), { N, network->channelsIn() });
     qmlp::Tensor outputDevice(network->precisionOut(), { N, network->channelsOut() });
-    Eigen::MatrixXf inputHost = Eigen::MatrixXf::Random(N, network->channelsIn());
+    EigenMatrixX inputHost = EigenMatrixX::Random(N, network->channelsIn());
     toGpuTensor(inputDevice, inputHost);
 
     //INFERENCE
     //run cuda network
     network->inference(inputDevice, outputDevice, stream);
     CKL_SAFE_CALL(cudaDeviceSynchronize());
-    Eigen::MatrixXf outputCudaHost = toEigenMatrix(outputDevice);
+    EigenMatrixX outputCudaHost = toEigenMatrix(outputDevice);
     //run Eigen network
-    Eigen::MatrixXf outputEigenHost;
+    EigenMatrixX outputEigenHost;
     {
         auto input = inputHost.transpose();
-        Eigen::MatrixXf weights0 = toEigenMatrix(network->networkParameter(0, false, qmlp::Tensor::INFERENCE));
-        Eigen::VectorXf bias0 = toEigenVector(network->networkParameter(0, true, qmlp::Tensor::INFERENCE));
-        Eigen::MatrixXf weights1 = toEigenMatrix(network->networkParameter(1, false, qmlp::Tensor::INFERENCE));
-        Eigen::VectorXf bias1 = toEigenVector(network->networkParameter(1, true, qmlp::Tensor::INFERENCE));
-        Eigen::MatrixXf outTemp0 = (weights0 * input).colwise() + bias0;
-        Eigen::MatrixXf out0 = TestActivation<Activ1>::forward(outTemp0);
-        Eigen::MatrixXf outTemp1 = (weights1 * out0).colwise() + bias1;
-        Eigen::MatrixXf out1 = TestActivation<Activ2>::forward(outTemp1);
+        EigenMatrixX weights0 = toEigenMatrix(network->networkParameter(0, false, qmlp::Tensor::INFERENCE));
+        EigenVectorX bias0 = toEigenVector(network->networkParameter(0, true, qmlp::Tensor::INFERENCE));
+        EigenMatrixX weights1 = toEigenMatrix(network->networkParameter(1, false, qmlp::Tensor::INFERENCE));
+        EigenVectorX bias1 = toEigenVector(network->networkParameter(1, true, qmlp::Tensor::INFERENCE));
+        EigenMatrixX outTemp0 = (weights0 * input).colwise() + bias0;
+        EigenMatrixX out0 = TestActivation<Activ1>::forward(outTemp0);
+        EigenMatrixX outTemp1 = (weights1 * out0).colwise() + bias1;
+        EigenMatrixX out1 = TestActivation<Activ2>::forward(outTemp1);
         outputEigenHost = out1.transpose();
     }
     //compare
@@ -249,39 +259,39 @@ TEMPLATE_TEST_CASE_SIG("test-agaist-eigen", "[eigen]",
     //DERIVATIVES
 
     //adjoint output
-    Eigen::MatrixXf adjOutputHost = Eigen::MatrixXf::Random(N, network->channelsOut());
+    EigenMatrixX adjOutputHost = EigenMatrixX::Random(N, network->channelsOut());
     qmlp::Tensor adjOutputDevice(network->precisionOut(), { N, network->channelsOut() });
     toGpuTensor(adjOutputDevice, adjOutputHost);
 
     //first run Eigen
-    Eigen::MatrixXf adjInputEigen, adjWeights0Eigen, adjBias0Eigen, adjWeights1Eigen, adjBias1Eigen;
+    EigenMatrixX adjInputEigen, adjWeights0Eigen, adjBias0Eigen, adjWeights1Eigen, adjBias1Eigen;
     {
         //forward
         auto input = inputHost.transpose();
-        Eigen::MatrixXf weights0 = toEigenMatrix(network->networkParameter(0, false, qmlp::Tensor::INFERENCE));
-        Eigen::VectorXf bias0 = toEigenVector(network->networkParameter(0, true, qmlp::Tensor::INFERENCE));
-        Eigen::MatrixXf weights1 = toEigenMatrix(network->networkParameter(1, false, qmlp::Tensor::INFERENCE));
-        Eigen::VectorXf bias1 = toEigenVector(network->networkParameter(1, true, qmlp::Tensor::INFERENCE));
-        Eigen::MatrixXf outTemp0 = (weights0 * input).colwise() + bias0;
-        Eigen::MatrixXf out0 = TestActivation<Activ1>::forward(outTemp0);
-        Eigen::MatrixXf outTemp1 = (weights1 * out0).colwise() + bias1;
-        Eigen::MatrixXf out1 = TestActivation<Activ2>::forward(outTemp1);
+        EigenMatrixX weights0 = toEigenMatrix(network->networkParameter(0, false, qmlp::Tensor::INFERENCE));
+        EigenVectorX bias0 = toEigenVector(network->networkParameter(0, true, qmlp::Tensor::INFERENCE));
+        EigenMatrixX weights1 = toEigenMatrix(network->networkParameter(1, false, qmlp::Tensor::INFERENCE));
+        EigenVectorX bias1 = toEigenVector(network->networkParameter(1, true, qmlp::Tensor::INFERENCE));
+        EigenMatrixX outTemp0 = (weights0 * input).colwise() + bias0;
+        EigenMatrixX out0 = TestActivation<Activ1>::forward(outTemp0);
+        EigenMatrixX outTemp1 = (weights1 * out0).colwise() + bias1;
+        EigenMatrixX out1 = TestActivation<Activ2>::forward(outTemp1);
         //backward
-        Eigen::MatrixXf adjOut1 = adjOutputHost.transpose();
+        EigenMatrixX adjOut1 = adjOutputHost.transpose();
         std::cout << "adjOut1 = " << adjOut1.block(0, 0, adjOut1.rows(), 1).transpose() << "\n";
 
-        Eigen::MatrixXf adjOutTemp1 = TestActivation<Activ2>::adjoint(outTemp1, adjOut1);
+        EigenMatrixX adjOutTemp1 = TestActivation<Activ2>::adjoint(outTemp1, adjOut1);
         std::cout << "adjOutTemp1 = " << adjOutTemp1.block(0, 0, adjOutTemp1.rows(), 1).transpose() << "\n";
         adjBias1Eigen = adjOutTemp1.rowwise().sum();
         adjWeights1Eigen = adjOutTemp1 * out0.transpose();
-        Eigen::MatrixXf adjOut0 = weights1.transpose() * adjOutTemp1;
+        EigenMatrixX adjOut0 = weights1.transpose() * adjOutTemp1;
         std::cout << "adjOut0 = " << adjOut0.block(0, 0, adjOut0.rows(), 1).transpose() << "\n";
 
-        Eigen::MatrixXf adjOutTemp0 = TestActivation<Activ2>::adjoint(outTemp0, adjOut0);
+        EigenMatrixX adjOutTemp0 = TestActivation<Activ2>::adjoint(outTemp0, adjOut0);
         std::cout << "adjOutTemp0 = " << adjOutTemp0.block(0, 0, adjOutTemp0.rows(), 1).transpose() << "\n";
         adjBias0Eigen = adjOutTemp0.rowwise().sum();
         adjWeights0Eigen = adjOutTemp0 * input.transpose();
-        Eigen::MatrixXf adjInput = weights0.transpose() * adjOutTemp0;
+        EigenMatrixX adjInput = weights0.transpose() * adjOutTemp0;
         std::cout << "adjInput = " << adjInput.block(0, 0, adjInput.rows(), 1).transpose() << "\n";
         adjInputEigen = adjInput.transpose();
     }
@@ -300,19 +310,19 @@ TEMPLATE_TEST_CASE_SIG("test-agaist-eigen", "[eigen]",
         CKL_SAFE_CALL(cudaFree(tmpMem));
         return s;
     };
-    const auto compareTensorAndMatrix = [](const qmlp::Tensor& actual, const Eigen::MatrixXf& expected, const char* line)
+    const auto compareTensorAndMatrix = [](const qmlp::Tensor& actual, const EigenMatrixX& expected, const char* line)
     {
         INFO("test: " << line);
-        Eigen::MatrixXf actualHost = toEigenMatrix(actual);
+        EigenMatrixX actualHost = toEigenMatrix(actual);
         INFO("actual (CUDA):\n" << actualHost);
         INFO("expected (Eigen):\n" << expected);
         compareEigen(actualHost, expected);
     };
 #define COMPARE_TENSOR_AND_MATRIX(...) compareTensorAndMatrix(__VA_ARGS__, CKL_STR(__VA_ARGS__))
-    const auto compareTensorAndVector = [](const qmlp::Tensor& actual, const Eigen::VectorXf& expected, const char* line)
+    const auto compareTensorAndVector = [](const qmlp::Tensor& actual, const EigenVectorX& expected, const char* line)
     {
         INFO("test: " << line);
-        Eigen::VectorXf actualHost = toEigenVector(actual);
+        EigenVectorX actualHost = toEigenVector(actual);
         INFO("actual (CUDA):\n" << actualHost);
         INFO("expected (Eigen):\n" << expected);
         compareEigen(actualHost, expected);
