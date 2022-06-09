@@ -338,11 +338,12 @@ void FusedNetwork::compileInferenceKernel()
     int maxChannels = 0;
     for (const auto& l : layers_)
         maxChannels = std::max({ maxChannels, l.channelsIn, l.channelsOut });
-    int inputPadStart = 0;
+    int maxEncodingChannels = 0;
     for (const auto& e : encodings_)
-        inputPadStart = std::max(inputPadStart, e->maxInputChannel() + 1);
+        maxEncodingChannels += e->numOutputChannels();
     int channelsIn = layers_.begin()->channelsIn;
     int channelsOut = layers_.rbegin()->channelsOut;
+    int inputPadStart = maxEncodingChannels;
     replaceAll(codeTemplate, "$$MAX_CHANNELS$", std::to_string(maxChannels));
     replaceAll(codeTemplate, "$$INPUT_PAD_START$$", std::to_string(inputPadStart));
     replaceAll(codeTemplate, "$$CHANNELS_IN$$", std::to_string(channelsIn));
@@ -369,8 +370,9 @@ void FusedNetwork::compileInferenceKernel()
     //call layers
     //TODO: prefetch weights in shared memory?
     std::stringstream callLayers;
-    for (const auto& l : layers_)
+    for (size_t layerIdx=0; layerIdx < layers_.size(); ++layerIdx)
     {
+        const auto& l = layers_[layerIdx];
         //type
         if (l.activations.size() > 1) throw std::runtime_error("Individual activations per channel are not implemented yet");
         callLayers << "qmlp::kernel::Layer<" << (l.channelsIn / 16) << ", " << (l.channelsOut / 16) <<
@@ -383,6 +385,9 @@ void FusedNetwork::compileInferenceKernel()
         else
             callLayers << "nullptr, ";
         callLayers << "intermediateResultsWarp, nullptr);\n";
+        ////test
+        //callLayers << "if (index==0) {printLayer(" << (layerIdx + 1) << ", index, intermediateResultsThread, " <<
+        //    l.channelsOut << ");}\n";
     }
     replaceAll(codeTemplate, "$$CALL_NETWORK_LAYERS$$", callLayers.str());
 
@@ -691,12 +696,10 @@ void FusedNetwork::compileBackwardKernel(int flags)
     replaceAll(codeTemplate, "$$CHANNELS_OUT$$", std::to_string(channelsOut));
     replaceAll(codeTemplate, "$$HAS_INPUT_GRADIENTS$$", hasInputGradients?"true":"false");
 
-    //call layers
-    //TODO: prefetch weights in shared memory?
-    std::stringstream callLayers;
+    //compute offsets
     int perEntryForwardMemoryHalf = 0;
     int perEntryForwardMemoryHalfPrevious = 0;
-    for (size_t i=0; i<layers_.size(); ++i)
+    for (int i = 0; i < layers_.size(); ++i)
     {
         const auto& l = layers_[i];
         auto& ali = ak.layers[i];
@@ -706,6 +709,16 @@ void FusedNetwork::compileBackwardKernel(int flags)
             ali.offsetIn = perEntryForwardMemoryHalfPrevious;
         ali.offsetAdjOut = perEntryForwardMemoryHalf;
         perEntryForwardMemoryHalfPrevious = perEntryForwardMemoryHalf;
+        perEntryForwardMemoryHalf += l.channelsOut;
+    }
+
+    //call layers
+    //TODO: prefetch weights in shared memory?
+    std::stringstream callLayers;
+    for (int i=layers_.size()-1; i>=0; --i) //Note: reverse order!
+    {
+        const auto& l = layers_[i];
+        auto& ali = ak.layers[i];
         //type
         if (l.activations.size() > 1) throw std::runtime_error("Individual activations per channel are not implemented yet");
         callLayers << "qmlp::kernel::Layer<" << (l.channelsIn / 16) << ", " << (l.channelsOut / 16) <<
@@ -714,15 +727,16 @@ void FusedNetwork::compileBackwardKernel(int flags)
         //parameters
         callLayers << "::template adjoint< " <<
             (hasNetworkGradients ? "true" : "false") << " > (\n" <<
-            "   networkParameters+" << l.weightsStart << ", ";
+            "    networkParameters+" << l.weightsStart << ", ";
         if (l.useBias)
             callLayers << "networkParameters+" << l.biasStart << ", ";
         else
             callLayers << "nullptr, ";
-        callLayers << "intermediateResultsWarp, \n" <<
-            "    forwardTmpMemory + (" << perEntryForwardMemoryHalf << "*numel" << " + 32*" << l.channelsOut << "*warpID), " <<
-            "adjointTmpMemory + (" << perEntryForwardMemoryHalf << "*numel" << " + 32*" << l.channelsOut << "*warpID) );\n";
-        perEntryForwardMemoryHalf += l.channelsOut;
+        callLayers << "adjIntermediateResultsWarp, \n" <<
+            "    forwardTmpMemory + (" << ali.offsetAdjOut << "*numel" << " + 32*" << l.channelsOut << "*warpID), " <<
+            "adjointTmpMemory + (" << ali.offsetAdjOut << "*numel" << " + 32*" << l.channelsOut << "*warpID) );\n";
+        //test
+        callLayers << "if (index == 0) { printLayer(" << i << ", index, adjIntermediateResultsThread, " << l.channelsIn << "); }\n";
     }
     replaceAll(codeTemplate, "$$CALL_NETWORK_LAYERS$$", callLayers.str());
 
@@ -736,7 +750,7 @@ void FusedNetwork::compileBackwardKernel(int flags)
         callEncodings << e->qualifiedName() << "::template adjoint<" <<
             (hasInputGradients ? "true" : "false") << ", " <<
             (hasEncodingGradients ? "true" : "false") <<
-            "(encodingInput, adjEncodingOutput + " << encodingOffset <<
+            ">(encodingInput, adjEncodingOutput + " << encodingOffset <<
             ", adjEncodingInput";
         encodingOffset += e->numOutputChannels();
         if (e->hasParameters())
@@ -755,7 +769,7 @@ void FusedNetwork::compileBackwardKernel(int flags)
         | ckl::KernelLoader::CompilationFlags::CompileVerboseLogging;
 #endif
     ckl::KernelFunction fun = kl->getKernel(
-        "qmlp::kernel::NetworkKernelInferenceAndForward",
+        "qmlp::kernel::NetworkKernelBackward",
         codeTemplate,
         encodingConstantNames,
         compileFlags).value();

@@ -99,6 +99,11 @@ public:
         return precision_;
     }
 
+    [[nodiscard]] int bytesPerEntry() const
+    {
+        return BytesPerEntry[precision_];
+    }
+
     [[nodiscard]] int ndim() const
     {
         return ndim_;
@@ -142,7 +147,7 @@ public:
         return idx;
     }
 
-    [[nodiscard]] int64_t idx(std::initializer_list<int32_t> l)
+    [[nodiscard]] int64_t idx(std::initializer_list<int32_t> l) const
     {
         assert(l.size() == ndim());
         int64_t idx = 0;

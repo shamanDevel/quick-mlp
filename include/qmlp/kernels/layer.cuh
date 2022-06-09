@@ -5,9 +5,28 @@
 
 #ifndef CUDA_NO_HOST
 #include <cuda_runtime.h>
+#include <stdio.h>
 #endif
 
 namespace qmlp { namespace kernel {
+
+static inline __device__
+void printLayer(int layer, int idx, const half* data, int numel)
+{
+    int i = 0;
+    while (numel > 0)
+    {
+        printf("{L %d}[T %03d] (%02d-%02d): %+.4f %+.4f %+.4f %+.4f %+.4f %+.4f %+.4f %+.4f %+.4f %+.4f %+.4f %+.4f %+.4f %+.4f %+.4f %+.4f\n",
+            layer, idx, i, i + 16,
+            __half2float(data[i + 0]), __half2float(data[i + 1]), __half2float(data[i + 2]), __half2float(data[i + 3]),
+            __half2float(data[i + 4]), __half2float(data[i + 5]), __half2float(data[i + 6]), __half2float(data[i + 7]),
+            __half2float(data[i + 8]), __half2float(data[i + 9]), __half2float(data[i + 10]), __half2float(data[i + 11]),
+            __half2float(data[i + 12]), __half2float(data[i + 13]), __half2float(data[i + 14]), __half2float(data[i + 15]));
+
+        i += 16;
+        numel -= 16;
+    }
+}
 
 template<int InChannelsDiv16, int OutChannelsDiv16, int HiddenStride, bool Bias, typename Activation>
 struct Layer

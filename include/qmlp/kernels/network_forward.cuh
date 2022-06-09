@@ -95,7 +95,7 @@ $$CALL_NETWORK_LAYERS$$
         {
             for (int cout=0; cout<CHANNELS_OUT; ++cout)
             {
-                outputs[index][cout] == __half2float(
+                outputs[index][cout] = __half2float(
                     intermediateResultsThread[cout]);
             }
         }

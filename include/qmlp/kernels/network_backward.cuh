@@ -77,16 +77,18 @@ __global__ void NetworkKernelBackward(
         //              forwardTmpMemory+offsetIntermediate, adjointTmpMemory+offsetIntermediate);
         //TODO: prefetch weights in shared memory?
 
+        if (index == 0) { printLayer(2, index, adjIntermediateResultsThread, CHANNELS_OUT); }
         //CODE GENERATION [[
-        $$CALL_NETWORK_LAYERS$$
+$$CALL_NETWORK_LAYERS$$
         //]] CODE GENERATIION
 
         //adjoint encodings
         if (valid) {
             auto encodingInput = inputs[index];
             TensorAccessor<float, 1, DefaultPtrTraits, int> adjEncodingInput;
-            if constexpr(HAS_INPUT_GRADIENTS)
+            if constexpr (HAS_INPUT_GRADIENTS) {
                 adjEncodingInput = adjInputs[index];
+            }
 
             half* adjEncodingOutput = adjIntermediateResultsThread;
 

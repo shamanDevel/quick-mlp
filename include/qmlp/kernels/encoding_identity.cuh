@@ -28,7 +28,7 @@ struct EncodingIdentity
 #pragma unroll
             for (int i = 0; i < NumChannels; ++i)
             {
-                adjInput[i + StartChannel] += adjOutput[i];
+                adjInput[i + StartChannel] += __half2float(adjOutput[i]);
             }
         }
     }
