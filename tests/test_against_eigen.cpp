@@ -10,11 +10,11 @@
 namespace {
     enum class TestActivationType
     {
-        RELU, SINE
+        RELU, SINE, IDENTITY
     };
     //name for the config file
     static const char* TestActivationConfigName[] = {
-        "relu", "sine"
+        "relu", "sine", "identity"
     };
     template<TestActivationType T> struct TestActivation;
     template<>
@@ -39,6 +39,18 @@ namespace {
         static Eigen::MatrixXf adjoint(const Eigen::MatrixXf& x, const Eigen::MatrixXf& adjz)
         {
             return (x.array().cos() * adjz.array()).matrix();
+        }
+    };
+    template<>
+    struct TestActivation<TestActivationType::IDENTITY>
+    {
+        static Eigen::MatrixXf forward(const Eigen::MatrixXf& x)
+        {
+            return x;
+        }
+        static Eigen::MatrixXf adjoint(const Eigen::MatrixXf& x, const Eigen::MatrixXf& adjz)
+        {
+            return adjz;
         }
     };
 
@@ -116,19 +128,40 @@ namespace {
 
         CKL_SAFE_CALL(cudaMemcpy(dst.rawPtr(), dataHost.data(), dataHost.size(), cudaMemcpyHostToDevice));
     }
+
+    template <typename T> int sgn(T val) {
+        return (T(0) < val) - (val < T(0));
+    }
+    void compareEigen(const Eigen::MatrixXf& actual, const Eigen::MatrixXf& expected)
+    {
+        REQUIRE(actual.rows() == expected.rows());
+        REQUIRE(actual.cols() == expected.cols());
+        for (int i = 0; i < actual.rows(); ++i) for (int j = 0; j < actual.cols(); ++j)
+        {
+            INFO("i=" << i << ", j=" << j);
+            float va = actual(i, j);
+            float ve = expected(i, j);
+            INFO("actual=" << va << ", expected=" << ve);
+            REQUIRE(sgn(va) == sgn(ve));
+            float relDiff = va / ve;
+            const float eps = 5;
+            REQUIRE((1/eps < relDiff && relDiff < eps));
+        }
+    }
 }
 
 TEMPLATE_TEST_CASE_SIG("test-agaist-eigen", "[eigen]", 
     ((int Channels0, int Channels1, TestActivationType Activ1, int Channels2, TestActivationType Activ2),
         Channels0, Channels1, Activ1, Channels2, Activ2),
-    (16, 16, TestActivationType::SINE, 16, TestActivationType::SINE)//,
-    //(16, 16, TestActivationType::RELU, 16, TestActivationType::RELU),
+    (16, 16, TestActivationType::SINE, 16, TestActivationType::IDENTITY)
+    //(16, 16, TestActivationType::SINE, 16, TestActivationType::SINE),
+    //(16, 16, TestActivationType::RELU, 16, TestActivationType::IDENTITY),
     //(16, 16, TestActivationType::SINE, 32, TestActivationType::SINE),
-    //(16, 16, TestActivationType::RELU, 32, TestActivationType::RELU),
+    //(16, 16, TestActivationType::RELU, 32, TestActivationType::IDENTITY),
     //(32, 48, TestActivationType::SINE, 16, TestActivationType::SINE),
-    //(32, 48, TestActivationType::RELU, 16, TestActivationType::RELU),
+    //(32, 48, TestActivationType::RELU, 16, TestActivationType::IDENTITY),
     //(32, 48, TestActivationType::SINE, 32, TestActivationType::SINE),
-    //(32, 48, TestActivationType::RELU, 32, TestActivationType::RELU)
+    //(32, 48, TestActivationType::RELU, 32, TestActivationType::IDENTITY)
     )
 {
     nlohmann::json cfg = {
@@ -210,7 +243,7 @@ TEMPLATE_TEST_CASE_SIG("test-agaist-eigen", "[eigen]",
     {
         INFO("output CUDA:\n" << outputCudaHost);
         INFO("output Eigen:\n" << outputEigenHost);
-        REQUIRE(outputCudaHost.isApprox(outputEigenHost, 1e-2f));
+        compareEigen(outputCudaHost, outputEigenHost);
     }
 
     //DERIVATIVES
@@ -273,7 +306,7 @@ TEMPLATE_TEST_CASE_SIG("test-agaist-eigen", "[eigen]",
         Eigen::MatrixXf actualHost = toEigenMatrix(actual);
         INFO("actual (CUDA):\n" << actualHost);
         INFO("expected (Eigen):\n" << expected);
-        REQUIRE(actualHost.isApprox(expected, 1e-2f));
+        compareEigen(actualHost, expected);
     };
 #define COMPARE_TENSOR_AND_MATRIX(...) compareTensorAndMatrix(__VA_ARGS__, CKL_STR(__VA_ARGS__))
     const auto compareTensorAndVector = [](const qmlp::Tensor& actual, const Eigen::VectorXf& expected, const char* line)
@@ -282,7 +315,7 @@ TEMPLATE_TEST_CASE_SIG("test-agaist-eigen", "[eigen]",
         Eigen::VectorXf actualHost = toEigenVector(actual);
         INFO("actual (CUDA):\n" << actualHost);
         INFO("expected (Eigen):\n" << expected);
-        REQUIRE(actualHost.isApprox(expected, 1e-2f));
+        compareEigen(actualHost, expected);
     };
 #define COMPARE_TENSOR_AND_VECTOR(...) compareTensorAndVector(__VA_ARGS__, CKL_STR(__VA_ARGS__))
 

@@ -77,7 +77,6 @@ __global__ void NetworkKernelBackward(
         //              forwardTmpMemory+offsetIntermediate, adjointTmpMemory+offsetIntermediate);
         //TODO: prefetch weights in shared memory?
 
-        if (index == 0) { printLayer(2, index, adjIntermediateResultsThread, CHANNELS_OUT); }
         //CODE GENERATION [[
 $$CALL_NETWORK_LAYERS$$
         //]] CODE GENERATIION

@@ -8,5 +8,10 @@
         "id": "sine",
         "forward": "z = hsin(x)",
         "adjoint": "adjx = hcos(x)*adjz"
+    },
+    {
+        "id": "identity",
+        "forward": "z = x",
+        "adjoint": "adjx = adjz"
     }
 ]

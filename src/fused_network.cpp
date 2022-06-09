@@ -736,6 +736,7 @@ void FusedNetwork::compileBackwardKernel(int flags)
             "    forwardTmpMemory + (" << ali.offsetAdjOut << "*numel" << " + 32*" << l.channelsOut << "*warpID), " <<
             "adjointTmpMemory + (" << ali.offsetAdjOut << "*numel" << " + 32*" << l.channelsOut << "*warpID) );\n";
         //test
+        //TODO: remove
         callLayers << "if (index == 0) { printLayer(" << i << ", index, adjIntermediateResultsThread, " << l.channelsIn << "); }\n";
     }
     replaceAll(codeTemplate, "$$CALL_NETWORK_LAYERS$$", callLayers.str());
