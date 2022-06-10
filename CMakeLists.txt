@@ -97,6 +97,8 @@ find_package(CUDAToolkit REQUIRED)
 # Third-party
 add_subdirectory(third-party/cuda-kernel-loader)
 add_subdirectory(third-party/json)
+set(CUTLASS_ENABLE_HEADERS_ONLY ON CACHE BOOL "Enable only the header library")
+add_subdirectory(third-party/cutlass)
 
 # Files
 set(QUICKMLP_HEADERS
@@ -217,8 +219,11 @@ if(NOT TARGET qmlp)
     ${CMAKE_CURRENT_BINARY_DIR} third-party/tinyformat)
 
   # CUDA Stuff
-  target_link_libraries(qmlp PUBLIC
-    CUDA::cudart ckl::ckl nlohmann_json::nlohmann_json)
+  target_link_libraries(qmlp 
+    PUBLIC
+        CUDA::cudart ckl::ckl nlohmann_json::nlohmann_json
+    PRIVATE
+        nvidia::cutlass::cutlass)
   
 else()
   # It is invalid to install a target twice, too.
