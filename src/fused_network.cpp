@@ -226,8 +226,14 @@ void FusedNetwork::initializeInferenceParameters(std::default_random_engine& rng
                 weights.dataPtr<half>()[weights.idx({ i, j })] = __float2half(distr1(rng));
         //bias
         Tensor bias = networkParameter(layer, true, dataHost.data(), Tensor::HALF);
-        for (int32_t i = 0; i < bias.size(0); ++i)
-            bias.dataPtr<half>()[bias.idx({ i })] = __float2half(distr1(rng));
+        if (l.useBias) {
+            for (int32_t i = 0; i < bias.size(0); ++i)
+                bias.dataPtr<half>()[bias.idx({ i })] = __float2half(distr1(rng));
+        } else
+        {
+            for (int32_t i = 0; i < bias.size(0); ++i)
+                bias.dataPtr<half>()[bias.idx({ i })] = __float2half(0.f);
+        }
     }
 
     //copy to GPU
@@ -601,9 +607,7 @@ size_t FusedNetwork::forwardMemory(int numElements, AdjointModeFlags adjointFlag
     //compile kernel
     compileForwardKernel();
 
-    bool hasWeightGradients = adjointFlags & GRADIENTS_NETWORK_WEIGHTS;
-    return perEntryForwardMemoryBytes_ * static_cast<size_t>(numElements) * 
-        (hasWeightGradients ? 2 : 1);
+    return perEntryForwardMemoryBytes_ * static_cast<size_t>(numElements);
 }
 
 size_t FusedNetwork::forwardMemory(const Tensor& input, AdjointModeFlags adjointFlags)
@@ -736,9 +740,8 @@ void FusedNetwork::compileBackwardKernel(int flags)
         callLayers << "adjIntermediateResultsWarp, \n" <<
             "    forwardTmpMemory + (" << ali.offsetAdjOut << "*numel" << " + 32*" << l.channelsOut << "*warpID), " <<
             "adjointTmpMemory + (" << ali.offsetAdjOut << "*numel" << " + 32*" << l.channelsOut << "*warpID) );\n";
-        //test
-        //TODO: remove
-        callLayers << "if (index == 0) { printLayer(" << i << ", index, adjIntermediateResultsThread, " << l.channelsIn << "); }\n";
+        ////test
+        //callLayers << "if (index == 0) { printLayer(" << i << ", index, adjIntermediateResultsThread, " << l.channelsIn << "); }\n";
     }
     replaceAll(codeTemplate, "$$CALL_NETWORK_LAYERS$$", callLayers.str());
 
@@ -804,14 +807,31 @@ void FusedNetwork::compileBackwardKernel(int flags)
             ak.adjoint.encodingPtr2ConstantName[e] = constantName;
         }
     }
+    ak.perEntryAdjointMemoryBytes = hasNetworkGradients
+        ? perEntryForwardMemoryHalf * sizeof(half)
+        : 0;
 
     //TODO: kernels for gradient reduction of weight+bias
 
     backwardKernel_[flags] = std::move(ak);
 }
 
+size_t FusedNetwork::adjointMemory(int numElements, AdjointModeFlags adjointFlags)
+{
+    compileBackwardKernel(adjointFlags);
+    return backwardKernel_[adjointFlags]->perEntryAdjointMemoryBytes * static_cast<size_t>(numElements);
+}
+
+size_t FusedNetwork::adjointMemory(const Tensor& input, AdjointModeFlags adjointFlags)
+{
+    CHECK_DIM(input, 2);
+    CHECK_SIZE(input, 1, channelsIn());
+    int numel = input.size(0);
+    return adjointMemory(numel, adjointFlags);
+}
+
 void FusedNetwork::adjoint(const Tensor& input, const Tensor& adjOutput, AdjointModeFlags adjointFlags,
-    Tensor& adjInput, const void* tmpMemory, CUstream stream)
+                           Tensor& adjInput, const void* tmpMemoryForward, void* tmpMemoryAdjoint, CUstream stream)
 {
     CHECK_DIM(input, 2);
     CHECK_DIM(adjOutput, 2);
@@ -860,8 +880,8 @@ void FusedNetwork::adjoint(const Tensor& input, const Tensor& adjOutput, Adjoint
     kernel::Tensor2RW<float> adjInputAcc;
     if (hasInputGradients) adjInputAcc = adjInput.accessor<kernel::Tensor2RW<float>>();
     const half* networkParams = parametersInference_.dataPtr<half>();
-    const half* forwardTmpMemory = static_cast<const half*>(tmpMemory);
-    const half* adjointTmpMemory = forwardTmpMemory + (numel * perEntryForwardMemoryBytes_ * sizeof(half));
+    const half* forwardTmpMemory = static_cast<const half*>(tmpMemoryForward);
+    const half* adjointTmpMemory = static_cast<const half*>(tmpMemoryAdjoint);
     ak.adjoint.fun.call(
         minGridSize, ak.adjoint.blockSize, ak.adjoint.sharedMemorySize, stream,
         numel, inputAcc, adjOutputAcc, adjInputAcc, networkParams, forwardTmpMemory, adjointTmpMemory);

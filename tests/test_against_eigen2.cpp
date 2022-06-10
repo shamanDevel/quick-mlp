@@ -15,15 +15,15 @@ using namespace qmlp::tests;
 TEMPLATE_TEST_CASE_SIG("test-agaist-eigen-2", "[eigen]", 
     ((int Channels0, int Channels1, TestActivationType Activ1, int Channels2, TestActivationType Activ2),
         Channels0, Channels1, Activ1, Channels2, Activ2),
-    (16, 16, TestActivationType::SINE, 16, TestActivationType::IDENTITY)
-    //(16, 16, TestActivationType::SINE, 16, TestActivationType::SINE),
-    //(16, 16, TestActivationType::RELU, 16, TestActivationType::IDENTITY),
-    //(16, 16, TestActivationType::SINE, 32, TestActivationType::SINE),
-    //(16, 16, TestActivationType::RELU, 32, TestActivationType::IDENTITY),
-    //(32, 48, TestActivationType::SINE, 16, TestActivationType::SINE),
-    //(32, 48, TestActivationType::RELU, 16, TestActivationType::IDENTITY),
-    //(32, 48, TestActivationType::SINE, 32, TestActivationType::SINE),
-    //(32, 48, TestActivationType::RELU, 32, TestActivationType::IDENTITY)
+    (16, 16, TestActivationType::SINE, 16, TestActivationType::IDENTITY),
+    (16, 16, TestActivationType::SINE, 16, TestActivationType::SINE),
+    (16, 16, TestActivationType::RELU, 16, TestActivationType::IDENTITY),
+    (16, 16, TestActivationType::SINE, 32, TestActivationType::SINE),
+    (16, 16, TestActivationType::RELU, 32, TestActivationType::IDENTITY),
+    (32, 48, TestActivationType::SINE, 16, TestActivationType::SINE),
+    (32, 48, TestActivationType::RELU, 16, TestActivationType::IDENTITY),
+    (32, 48, TestActivationType::SINE, 32, TestActivationType::SINE),
+    (32, 48, TestActivationType::RELU, 32, TestActivationType::IDENTITY)
     )
 {
     nlohmann::json cfg = {

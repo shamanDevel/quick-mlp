@@ -87,6 +87,7 @@ private:
     {
         CompiledKernel adjoint;
         std::vector<AdjointLayerInfo> layers;
+        int perEntryAdjointMemoryBytes;
     };
     std::optional<AdjointKernel> backwardKernel_[ADJOINT_MODE_MAX_COMBINATIONS];
     //The number of bytes for storing the intermediate forward values.
@@ -214,6 +215,28 @@ public:
     void zeroGradients();
 
     /**
+    * \brief Computes the memory in bytes required as temporary memory
+     * during the adjoint pass. This memory is only used while computing
+     * the adjoint gradients and does not need to be stored persistently.
+    * \param numElements the number of elements to process
+    * \param adjointFlags additive flags of AdjointMode specifying what to differentiate
+    * \return the number of bytes required to store the intermediate results
+    *   to process the specified inputs.
+    */
+    size_t adjointMemory(int numElements, AdjointModeFlags adjointFlags);
+
+    /**
+     * \brief Computes the memory in bytes required as temporary memory
+     * during the adjoint pass. This memory is only used while computing
+     * the adjoint gradients and does not need to be stored persistently.
+     * \param input the network inputs for determing the size
+     * \param adjointFlags additive flags of AdjointMode specifying what to differentiate
+     * \return the number of bytes required to store the intermediate results
+     *   to process the specified inputs.
+     */
+    size_t adjointMemory(const Tensor& input, AdjointModeFlags adjointFlags);
+
+    /**
      * \brief Performs the backpropagation / adjoint differentiation.
      * This method follows a call to \ref forward() and computes the gradients.
      * The gradients for the network weights are added to the gradient tensor specified
@@ -227,11 +250,15 @@ public:
      * \param adjOutput the adjoint of the output
      * \param adjointFlags additive flags of AdjointMode specifying what to differentiate
      * \param adjInput [optional] accumulates gradients with respect to the inputs
-     * \param tmpMemory temporary memory from the forward pass
+     * \param tmpMemoryForward temporary memory from the forward pass,
+     *   see \ref forwardMemory(Tensor, AdjointModeFlags)
+     * \param tmpMemoryAdjoint temporary memory for intermediate results
+     *   within the adjoint propagation. See \ref adjointMemory(Tensor, AdjointModeFlags).
+     *   Can be \c nullptr if \c adjointMemory() also requests zero bytes.
      * \param stream the CUDA stream where the kernel is enqueued.
      */
     void adjoint(const Tensor& input, const Tensor& adjOutput, AdjointModeFlags adjointFlags,
-        Tensor& adjInput, const void* tmpMemory, CUstream stream);
+        Tensor& adjInput, const void* tmpMemoryForward, void* tmpMemoryAdjoint, CUstream stream);
     
     /**
      * For debugging, clears all cached kernels.

@@ -108,6 +108,7 @@ set(QUICKMLP_HEADERS
     include/qmlp/qmlp.h
     include/qmlp/errors.h
     include/qmlp/tensor.h
+    include/qmlp/tmp_memory.h
     )
     
 set(QUICKMLP_RESOURCES

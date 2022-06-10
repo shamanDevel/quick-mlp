@@ -8,13 +8,17 @@
 #include <Eigen/Core>
 
 #include <qmlp/fused_network.h>
+#include <qmlp/tmp_memory.h>
 
-typedef Eigen::half EigenScalar_t;
+//typedef Eigen::half EigenScalar_t;
+typedef float EigenScalar_t;
 typedef Eigen::MatrixX<EigenScalar_t> EigenMatrixX;
 typedef Eigen::VectorX<EigenScalar_t> EigenVectorX;
 
 QUICKMLP_NAMESPACE_BEGIN
 namespace tests{
+    extern const Eigen::IOFormat SmallFmt;
+
     enum class TestActivationType
     {
         RELU, SINE, IDENTITY
@@ -33,7 +37,10 @@ namespace tests{
         }
         static EigenMatrixX adjoint(const EigenMatrixX& x, const EigenMatrixX& adjz)
         {
-            return ((x.array() > EigenScalar_t(0.f)).cast<EigenScalar_t>() * adjz.array()).matrix();
+            //return ((x.array() > EigenScalar_t(0.f)).cast<EigenScalar_t>() * adjz.array()).matrix();
+            return (x.array() > EigenScalar_t(0.f)).select(
+                adjz.array(),
+                EigenMatrixX::Zero(adjz.rows(), adjz.cols()).array()).matrix();
         }
     };
     template<>
@@ -143,7 +150,7 @@ namespace tests{
     {
         REQUIRE(actual.rows() == expected.rows());
         REQUIRE(actual.cols() == expected.cols());
-        static const float REL_ERROR = 0.1f; //10%
+        static const float REL_ERROR = 0.05f; //5%
         static const float ABS_ERROR = 1e-3f;
         static const float ALLOWED_EXCEED = 0.01f; //1%
         int numExceed = 0;
@@ -166,21 +173,24 @@ namespace tests{
         Tensor& adjInputDevice, Tensor& adjOutputDevice, int flags, CUstream stream=nullptr)
     {
         adjInputDevice.zero_();
+
         size_t s = network->forwardMemory(inputDevice, flags);
-        INFO("allocating " << s << " bytes as temporary memory");
-        void* tmpMem;
-        CKL_SAFE_CALL(cudaMalloc(&tmpMem, s));
-        network->forward(inputDevice, outputDevice, tmpMem, stream);
-        network->adjoint(inputDevice, adjOutputDevice, flags, adjInputDevice, tmpMem, stream);
-        CKL_SAFE_CALL(cudaFree(tmpMem));
+        INFO("allocating " << s << " bytes as temporary memory between forward and adjoint");
+        TmpMemory forwardMemory(s);
+        network->forward(inputDevice, outputDevice, forwardMemory.get(), stream);
+
+        TmpMemory adjointMemory(network->adjointMemory(inputDevice, flags));
+        network->adjoint(inputDevice, adjOutputDevice, flags, adjInputDevice, 
+            forwardMemory.get(), adjointMemory.get(), stream);
+
         return s;
     }
     inline void compareTensorAndMatrix(const qmlp::Tensor& actual, const EigenMatrixX& expected, const char* line)
     {
         INFO("test: " << line);
         EigenMatrixX actualHost = toEigenMatrix(actual);
-        INFO("actual (CUDA):\n" << actualHost);
-        INFO("expected (Eigen):\n" << expected);
+        INFO("actual (CUDA):\n" << actualHost.format(SmallFmt));
+        INFO("expected (Eigen):\n" << expected.format(SmallFmt));
         compareEigen(actualHost, expected);
     }
 #define COMPARE_TENSOR_AND_MATRIX(...) compareTensorAndMatrix(__VA_ARGS__, CKL_STR(__VA_ARGS__))
@@ -188,8 +198,8 @@ namespace tests{
     {
         INFO("test: " << line);
         EigenVectorX actualHost = toEigenVector(actual);
-        INFO("actual (CUDA):\n" << actualHost);
-        INFO("expected (Eigen):\n" << expected);
+        INFO("actual (CUDA):\n" << actualHost.format(SmallFmt));
+        INFO("expected (Eigen):\n" << expected.format(SmallFmt));
         compareEigen(actualHost, expected);
     }
 #define COMPARE_TENSOR_AND_VECTOR(...) compareTensorAndVector(__VA_ARGS__, CKL_STR(__VA_ARGS__))

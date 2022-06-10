@@ -9,15 +9,22 @@
 
 #include "test_against_eigen.h"
 
+QUICKMLP_NAMESPACE_BEGIN
+namespace tests
+{
+    const Eigen::IOFormat SmallFmt = Eigen::IOFormat(3);
+}
+QUICKMLP_NAMESPACE_END
+
 using namespace qmlp;
 using namespace qmlp::tests;
 
 TEMPLATE_TEST_CASE_SIG("test-agaist-eigen-1", "[eigen]",
     ((int Channels0, int Channels1, TestActivationType Activ1),
         Channels0, Channels1, Activ1),
-    //(16, 16, TestActivationType::SINE),
-    //(16, 16, TestActivationType::RELU),
-    //(16, 16, TestActivationType::IDENTITY),
+    (16, 16, TestActivationType::SINE),
+    (16, 16, TestActivationType::RELU),
+    (16, 16, TestActivationType::IDENTITY),
     (16, 32, TestActivationType::SINE),
     (16, 32, TestActivationType::RELU),
     (16, 32, TestActivationType::IDENTITY),
@@ -142,6 +149,7 @@ TEMPLATE_TEST_CASE_SIG("test-agaist-eigen-1", "[eigen]",
     //only input derivatives
     {
         int tmpSize = adjointWithFlags(qmlp::FusedNetwork::GRADIENTS_INPUT);
+        std::cout.precision(3);
         INFO("size of temporary memory: " << tmpSize);
         COMPARE_TENSOR_AND_MATRIX(adjInputDevice, adjInputEigen);
     }

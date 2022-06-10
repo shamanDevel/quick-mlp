@@ -7,7 +7,7 @@
     {
         "id": "sine",
         "forward": "z = hsin(x)",
-        "adjoint": "adjx = hcos(x)*adjz"
+        "adjoint": "adjx = __hmul(hcos(x), adjz)"
     },
     {
         "id": "identity",
