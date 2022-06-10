@@ -258,5 +258,6 @@ private:
 
 
 };
+typedef std::shared_ptr<FusedNetwork> FusedNetwork_ptr;
 
 QUICKMLP_NAMESPACE_END

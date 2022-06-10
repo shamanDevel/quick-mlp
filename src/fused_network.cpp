@@ -253,6 +253,7 @@ Tensor FusedNetwork::networkParameter(int layer, bool bias, void* rawPtr, Tensor
     }
     else
     {
+        //row-major
         return Tensor(
             data + bytesPerEntry * l.weightsStart,
             precision,

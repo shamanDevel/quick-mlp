@@ -77,7 +77,7 @@ struct Layer
         for (int cout = 0; cout < OutChannelsDiv16; ++cout)
             for (int cin = 0; cin < InChannelsDiv16; ++cin)
                 load_matrix_sync(a_frag[cout][cin],
-                    weights + 16 * cin + OutChannels * cout,
+                    weights + 16 * (cin + InChannels * cout),
                     InChannels);
 
         //load input (B)
@@ -152,8 +152,8 @@ struct Layer
         for (int cout = 0; cout < OutChannelsDiv16; ++cout)
             for (int cin = 0; cin < InChannelsDiv16; ++cin)
                 load_matrix_sync(a_frag[cin][cout],
-                    weights + 16 * cin + OutChannels * cout,
-                    OutChannels);
+                    weights + 16 * (cin + InChannels * cout),
+                    InChannels);
 
         //adjoint of the activation.
         //Perform computation in shared memory, directly in adjStatesInout,
