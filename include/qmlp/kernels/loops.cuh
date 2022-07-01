@@ -41,9 +41,16 @@ namespace qmlp {namespace kernel
 		 i += blockDim.x * gridDim.x) {
 #define KERNEL_1D_LOOP_END }
 
-#define KERNEL_1D_LOOP_SYNC(i, valid, numel)						\
+#define KERNEL_1D_LOOP_SYNC(i, valid, numel)							\
     const auto numel_pow32 = qmlp::kernel::roundUpPower2(numel, 32);	\
-    for (ptrdiff_t i = blockIdx.x * blockDim.x + threadIdx.x;		\
-		 i < numel_pow32;											\
-		 i += blockDim.x * gridDim.x) {								\
+    for (ptrdiff_t i = blockIdx.x * blockDim.x + threadIdx.x;			\
+		 i < numel_pow32;												\
+		 i += blockDim.x * gridDim.x) {									\
+		 const bool valid = i < numel;
+
+#define KERNEL_1D_LOOP_BLOCKSYNC(i, valid, numel)						\
+    const auto numel_pow32 = qmlp::kernel::roundUpPower2(numel, 32);	\
+    for (ptrdiff_t i = threadIdx.x;										\
+		 i < numel_pow32;												\
+		 i += blockDim.x) {												\
 		 const bool valid = i < numel;

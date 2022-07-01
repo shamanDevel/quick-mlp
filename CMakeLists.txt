@@ -122,6 +122,7 @@ set(QUICKMLP_RESOURCES
     include/qmlp/kernels/layer.cuh
     include/qmlp/kernels/network_forward.cuh
     include/qmlp/kernels/network_backward.cuh
+    include/qmlp/kernels/network_weight_update_block.cuh
 )
 
 set(QUICKMLP_SOURCES
