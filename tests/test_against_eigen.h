@@ -70,6 +70,7 @@ namespace tests{
 
     inline EigenMatrixX toEigenMatrix(const qmlp::Tensor& tensor)
     {
+        if (!tensor.defined()) return {};
         REQUIRE(tensor.ndim() == 2);
 
         const void* dataDevice = tensor.rawPtr();
@@ -95,6 +96,7 @@ namespace tests{
     }
     inline EigenVectorX toEigenVector(const qmlp::Tensor& tensor)
     {
+        if (!tensor.defined()) return {};
         REQUIRE(tensor.ndim() == 1);
 
         const void* dataDevice = tensor.rawPtr();
@@ -173,6 +175,7 @@ namespace tests{
         Tensor& adjInputDevice, Tensor& adjOutputDevice, int flags, CUstream stream=nullptr)
     {
         adjInputDevice.zero_();
+        network->zeroGradients();
 
         size_t s = network->forwardMemory(inputDevice, flags);
         INFO("allocating " << s << " bytes as temporary memory between forward and adjoint");

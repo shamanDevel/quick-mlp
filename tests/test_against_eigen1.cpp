@@ -19,7 +19,7 @@ QUICKMLP_NAMESPACE_END
 using namespace qmlp;
 using namespace qmlp::tests;
 
-TEMPLATE_TEST_CASE_SIG("test-agaist-eigen-1", "[eigen]",
+TEMPLATE_TEST_CASE_SIG("test-against-eigen-1", "[eigen]",
     ((int Channels0, int Channels1, TestActivationType Activ1),
         Channels0, Channels1, Activ1),
     (16, 16, TestActivationType::SINE),

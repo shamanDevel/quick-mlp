@@ -52,7 +52,6 @@ __global__ void NetworkKernelBackward(
     constexpr int CHANNELS_IN = $$CHANNELS_IN$$;
     constexpr int CHANNELS_OUT = $$CHANNELS_OUT$$;
     constexpr bool HAS_INPUT_GRADIENTS = $$HAS_INPUT_GRADIENTS$$;
-    const half hZERO = __float2half(0);
 
     KERNEL_1D_LOOP_SYNC(index, valid, numel)
     {

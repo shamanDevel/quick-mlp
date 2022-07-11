@@ -48,7 +48,6 @@ __global__ void NetworkKernelInferenceAndForward(
     constexpr int INPUT_PAD_START = $$INPUT_PAD_START$$;
     constexpr int CHANNELS_IN = $$CHANNELS_IN$$;
     constexpr int CHANNELS_OUT = $$CHANNELS_OUT$$;
-    const half hZERO = __float2half(0);
 
     KERNEL_1D_LOOP_SYNC(index, valid, numel)
     {
@@ -69,7 +68,7 @@ $$CALL_ENCODINGS$$
             //padding
             for (int cin = INPUT_PAD_START; cin < CHANNELS_IN; ++cin)
             {
-                intermediateResultsThread[cin] = hZERO;
+                intermediateResultsThread[cin] = hZERO();
             }
         }
         else
@@ -77,7 +76,7 @@ $$CALL_ENCODINGS$$
             //invalid index, fill with zeros to avoid NaNs
             for (int cin = 0; cin < CHANNELS_IN; ++cin)
             {
-                intermediateResultsThread[cin] = hZERO;
+                intermediateResultsThread[cin] = hZERO();
             }
         }
 

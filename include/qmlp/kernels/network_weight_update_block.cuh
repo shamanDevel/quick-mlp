@@ -30,6 +30,7 @@ namespace activations
     $$DEFINE_ACTIVATIONS$$
 }
 
+#if 0
 template<typename T, int N>
 class StaticArray
 {
@@ -55,6 +56,7 @@ public:
         : data_{ 0 }
     {}
 };
+#endif
 
 /**
  * \brief Loader for loading hat{O}_tmp into shared memory and registers.
@@ -73,7 +75,7 @@ struct OHatTmpLoader
      * This matches the layout of \c adjIntermediateOut in \c Layer::adjoint
      */
     typedef nvcuda::wmma::col_major layout_t;
-    typedef nvcuda::wmma::fragment<nvcuda::wmma::matrix_b, 16, 16, 16, half, layout_t> fragment_t;
+    typedef nvcuda::wmma::fragment<nvcuda::wmma::matrix_a, 16, 16, 16, half, layout_t> fragment_t;
     static constexpr int MDiv16 = _MDiv16;
     static constexpr int M = MDiv16 * 16;
 
@@ -130,6 +132,9 @@ struct OHatTmpLoader
      */
     __device__ static void loadToFragment(fragment_t dst[MDiv16][2], const half* tmpShared)
     {
+        //TEST
+        printLayer(0, threadIdx.x, tmpShared + (M * threadIdx.x % 32), M);
+
 #pragma unroll
         for (int cout = 0; cout < MDiv16; ++cout)
         {
@@ -194,6 +199,9 @@ struct HiddenLoader
      */
     __device__ static void loadToFragment(fragment_t dst[2][NDiv16], const half* tmpShared)
     {
+        //TEST
+        printLayer(1, threadIdx.x, tmpShared + (N*threadIdx.x%32), N);
+
         //note: load as row-major for transposing!
         for (int cin = 0; cin < NDiv16; ++cin)
         {
@@ -228,8 +236,8 @@ struct HiddenLoader
  * \param outAdjWeights the adjoint of weight matrix, row-major
  */
 template<typename AccuT, typename ALoader, typename BLoader,
-    typename AInput = typename ALoader::template input_t,
-    typename BInput = typename BLoader::template input_t>
+    typename AInput = typename ALoader::input_t,
+    typename BInput = typename BLoader::input_t>
 __global__ void WeightUpdateSingleBlockKernel(
     int numel, AccuT* outAdjWeights, AInput aIn, BInput bIn)
 {
@@ -238,33 +246,37 @@ __global__ void WeightUpdateSingleBlockKernel(
     const int numWarps = blockDim.x / 32;
     assert(gridDim.x == 1); //only a single block support (no atomics / grid-wise reduction)
 
-    constexpr int MDiv16 = ALoader::template MDiv16;
-    constexpr int NDiv16 = BLoader::template NDiv16;
+    constexpr int MDiv16 = ALoader::MDiv16;
+    constexpr int NDiv16 = BLoader::NDiv16;
     constexpr int M = MDiv16 * 16;
     constexpr int N = NDiv16 * 16;
-    typedef typename ALoader::template fragment_t AFragment_t;
-    typedef typename BLoader::template fragment_t BFragment_t;
+    typedef typename ALoader::fragment_t AFragment_t;
+    typedef typename BLoader::fragment_t BFragment_t;
 
     using namespace nvcuda::wmma;
 
     //per-warp: store the result of matrix C, shape MxN
     fragment<accumulator, 16, 16, 16, AccuT> c_frag[MDiv16][NDiv16];
-    for (int m=0; m<MDiv16; ++m) for (int n=0M; n<NDiv16; ++n)
+    for (int m=0; m<MDiv16; ++m) for (int n=0; n<NDiv16; ++n)
     {
         fill_fragment(c_frag[m][n], hZERO());
     }
 
-    //bias
-    StaticArray<AccuT, MDiv16> bias_frag;
+    // //bias
+    // StaticArray<AccuT, MDiv16> bias_frag;
 
     //matrices A and B
     constexpr int SharedBytesPerWarp_Input = //storage for A,B
         sizeof(half) * (
-        ALoader::template SharedMemoryHalf +
-        BLoader::template SharedMemoryHalf);
+        ALoader::SharedMemoryHalf +
+        BLoader::SharedMemoryHalf);
     constexpr int SharedBytesPerWarp_Output = //storage for C
         sizeof(AccuT) * M * N;
+
+    //This is the memory that must be provided by the host code:
+    [[maybe_unused]]
     constexpr int SharedBytesPerWarp = max(SharedBytesPerWarp_Input, SharedBytesPerWarp_Output);
+
     extern __shared__ char sIntermediate[];
     half* intermediateWarp = reinterpret_cast<half*>(sIntermediate + SharedBytesPerWarp_Input * warpID);
     AFragment_t a_frag[MDiv16][2];
@@ -276,27 +288,29 @@ __global__ void WeightUpdateSingleBlockKernel(
         warpIndex < warps_pow32;
         warpIndex += numWarps)
     {
-        //the logical index into the arrays
-        int elementIndex = warpIndex + lineID;
+        //the logical index into the arrays (not needed)
+        // int elementIndex = warpIndex + lineID;
+
         //the remaining elements in the array.
         //If this values is <32, this warp is only half filled,
         //and special care must be taken for loading+saving
         int elementsLeft = numel - warpIndex * 32;
+        if (lineID == 0) printf("warp %03d, idx=%d -> elements left=%d\n", warpID, warpIndex, elementsLeft);
 
         //load A and B to shared
         half* aShared = intermediateWarp;
-        half* bShared = intermediateWarp + ALoader::template SharedMemoryHalf;
-        ALoader::template loadToShared(aShared, aIn, warpIndex, elementsLeft);
-        BLoader::template loadToShared(bShared, bIn, warpIndex, elementsLeft);
+        half* bShared = intermediateWarp + ALoader::SharedMemoryHalf;
+        ALoader::loadToShared(aShared, aIn, warpIndex, elementsLeft);
+        BLoader::loadToShared(bShared, bIn, warpIndex, elementsLeft);
 
         //load to fragments
-        ALoader::template loadToFragment(a_frag, aShared);
-        BLoader::template loadToFragment(b_frag, bShared);
+        ALoader::loadToFragment(a_frag, aShared);
+        BLoader::loadToFragment(b_frag, bShared);
 
         //matmul, accumulates in the per-warp c-matrix
         for (int k = 0; k < 2; ++k)
         {
-            for (int m = 0; m < MDiv16; ++m) for (int n = 0M; n < NDiv16; ++n)
+            for (int m = 0; m < MDiv16; ++m) for (int n = 0; n < NDiv16; ++n)
             {
                 mma_sync(c_frag[m][n], a_frag[m][k], b_frag[k][n], c_frag[m][n]);
             }
@@ -308,16 +322,19 @@ __global__ void WeightUpdateSingleBlockKernel(
     AccuT* cShared = reinterpret_cast<AccuT*>(sIntermediate + SharedBytesPerWarp_Output * warpID);
     for (int m = 0; m < MDiv16; ++m) for (int n = 0; n < NDiv16; ++n)
     {
-        store_matrix_sync(cShared + 16*n + N*16*m, c_frag[m][n], mem_row_major);
+        store_matrix_sync(cShared + 16*n + N*16*m, c_frag[m][n], N, mem_row_major);
     }
     //now perform the reduction
     constexpr int reduceBatches = M * N;
-    constexpr int reduceElements = numWarps;
+    const int reduceElements = numWarps;
     for (int i=threadIdx.x; i<reduceBatches; i+=blockDim.x)
     {
         AccuT accu = cShared[i];
-        for (int j = 1; j < reduceElements; ++j)
+        printf("cShared[%d,0]=%.4f\n", i, cShared[i]);
+        for (int j = 1; j < reduceElements; ++j) {
             accu += cShared[i + j * reduceBatches];
+            //printf("cShared[%d,%d]=%.4f\n", i, j, cShared[i + j * reduceBatches]);
+        }
         cShared[i] = accu;
     }
     //write the matrix back to global memory

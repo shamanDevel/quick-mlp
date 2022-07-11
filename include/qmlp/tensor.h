@@ -26,6 +26,7 @@ public:
         FLOAT, HALF
     };
     static const int BytesPerEntry[];
+    static const std::string DatatypePerEntry[];
 
     enum Usage
     {

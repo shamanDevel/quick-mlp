@@ -142,20 +142,31 @@ FusedNetwork::FusedNetwork(const nlohmann::json& cfg, const std::filesystem::pat
         numParameters_ += specs.channelsOut;
     }
 
-    //create streams for training
-    trainingStreams_.resize(2 * layers_.size());
-    for (size_t i=0; i<trainingStreams_.size(); ++i)
+    //create info for training
+    backwardInfo_.resize(layers_.size());
+    int offsetAdjOut = 0;
+    int offsetIn = -1;
+    for (int i=0; i<layers_.size(); ++i)
     {
-        CKL_SAFE_CALL(cudaStreamCreateWithFlags(&trainingStreams_[i], cudaStreamNonBlocking));
+        backwardInfo_[i].offsetAdjOut = offsetAdjOut;
+        backwardInfo_[i].offsetIn = offsetIn;
+        offsetIn = offsetAdjOut;
+        offsetAdjOut += layers_[i].channelsOut;
+
+        CKL_SAFE_CALL(cudaStreamCreateWithFlags(&backwardInfo_[i].stream, cudaStreamNonBlocking));
+        CKL_SAFE_CALL(cudaEventCreateWithFlags(&backwardInfo_[i].event, cudaEventDisableTiming));
     }
+    CKL_SAFE_CALL(cudaEventCreateWithFlags(&adjointEvent_, cudaEventDisableTiming));
 }
 
 FusedNetwork::~FusedNetwork()
 {
-    for (size_t i = 0; i < trainingStreams_.size(); ++i)
+    for (size_t i = 0; i < backwardInfo_.size(); ++i)
     {
-        CKL_SAFE_CALL_NO_THROW(cudaStreamDestroy(trainingStreams_[i]));
+        CKL_SAFE_CALL_NO_THROW(cudaStreamDestroy(backwardInfo_[i].stream));
+        CKL_SAFE_CALL_NO_THROW(cudaEventDestroy(backwardInfo_[i].event));
     }
+    CKL_SAFE_CALL_NO_THROW(cudaEventDestroy(adjointEvent_));
 }
 
 IEncoding_ptr FusedNetwork::encoding(int idx)
@@ -229,10 +240,6 @@ void FusedNetwork::initializeInferenceParameters(std::default_random_engine& rng
         if (l.useBias) {
             for (int32_t i = 0; i < bias.size(0); ++i)
                 bias.dataPtr<half>()[bias.idx({ i })] = __float2half(distr1(rng));
-        } else
-        {
-            for (int32_t i = 0; i < bias.size(0); ++i)
-                bias.dataPtr<half>()[bias.idx({ i })] = __float2half(0.f);
         }
     }
 
@@ -251,6 +258,7 @@ Tensor FusedNetwork::networkParameter(int layer, bool bias, void* rawPtr, Tensor
     int bytesPerEntry = Tensor::BytesPerEntry[precision];
     if (bias)
     {
+        if (!l.useBias) return {};
         return Tensor(
             data + bytesPerEntry * l.biasStart,
             precision,
@@ -701,29 +709,13 @@ void FusedNetwork::compileBackwardKernel(int flags)
     replaceAll(codeTemplate, "$$CHANNELS_OUT$$", std::to_string(channelsOut));
     replaceAll(codeTemplate, "$$HAS_INPUT_GRADIENTS$$", hasInputGradients?"true":"false");
 
-    //compute offsets
-    int perEntryForwardMemoryHalf = 0;
-    int perEntryForwardMemoryHalfPrevious = 0;
-    for (int i = 0; i < layers_.size(); ++i)
-    {
-        const auto& l = layers_[i];
-        auto& ali = ak.layers[i];
-        if (i == 0)
-            ali.offsetIn = -1;
-        else
-            ali.offsetIn = perEntryForwardMemoryHalfPrevious;
-        ali.offsetAdjOut = perEntryForwardMemoryHalf;
-        perEntryForwardMemoryHalfPrevious = perEntryForwardMemoryHalf;
-        perEntryForwardMemoryHalf += l.channelsOut;
-    }
-
     //call layers
     //TODO: prefetch weights in shared memory?
     std::stringstream callLayers;
     for (int i=layers_.size()-1; i>=0; --i) //Note: reverse order!
     {
         const auto& l = layers_[i];
-        auto& ali = ak.layers[i];
+        auto& ali = backwardInfo_[i];
         //type
         if (l.activations.size() > 1) throw std::runtime_error("Individual activations per channel are not implemented yet");
         callLayers << "qmlp::kernel::Layer<" << (l.channelsIn / 16) << ", " << (l.channelsOut / 16) <<
@@ -786,7 +778,7 @@ void FusedNetwork::compileBackwardKernel(int flags)
     if (sharedMemorySize > MAX_SHARED_MEMORY_BYTES)
     {
         blockSize = MAX_SHARED_MEMORY_BYTES / (maxChannels * sizeof(half));
-        blockSize = (blockSize / 32) * 32; //round up to multiple of the warp size
+        blockSize = (blockSize / 32) * 32; //round down to multiple of the warp size
         std::cout << "It would be possible to fit more threads into each block in terms of register usage, but the shared memory is not enough. " <<
             "Reducing the block size from " << bestBlockSize << " down to " << blockSize << std::endl;
         sharedMemorySize = blockSize * maxChannels * sizeof(half);
@@ -808,10 +800,99 @@ void FusedNetwork::compileBackwardKernel(int flags)
         }
     }
     ak.perEntryAdjointMemoryBytes = hasNetworkGradients
-        ? perEntryForwardMemoryHalf * sizeof(half)
+        ? perEntryForwardMemoryBytes_ * sizeof(half)
         : 0;
 
-    //TODO: kernels for gradient reduction of weight+bias
+    //now compile the kernels for the weight updates
+    if (hasNetworkGradients)
+    {
+        ak.layers.resize(layers_.size());
+        std::string codeTemplate = kl->findFile("qmlp/kernels/network_weight_update_block.cuh").value();
+
+        //GENERATE CODE
+        std::vector<std::string> encodingConstantNames;
+        fillEncodingsAndActivations(codeTemplate, encodingConstantNames);
+
+        for (int layer=0; layer<layers_.size(); ++layer)
+        {
+            const auto& forwardSpecs = layers_[layer];
+            const auto& adjSpecs = backwardInfo_[layer];
+            auto& ck = ak.layers[layer];
+
+            if (forwardSpecs.useBias)
+                throw configuration_error("Optimizing the bias is not supported (not implemented yet)");
+
+            std::string kernelName;
+            int sharedMemoryBytesPerWarp_Input = 0;
+            if (layer==0)
+            {
+                //first layer, re-do the input parametrization again
+                //TODO: implement re-computing or loading from memory
+                std::cerr << "Warning: optimizing the first layer not implemented yet" << std::endl;
+                continue;
+            }
+            else
+            {
+                if (forwardSpecs.activations.size() > 1) throw std::runtime_error("Individual activations per channel are not implemented yet");
+                kernelName = tinyformat::format(
+                    "qmlp::kernel::WeightUpdateSingleBlockKernel<%s, qmlp::kernel::OHatTmpLoader<%d>, qmlp::kernel::HiddenLoader<%d, qmlp::kernel::activations::%s> >",
+                    Tensor::DatatypePerEntry[networkParameterPrecision(Tensor::GRADIENTS)],
+                    forwardSpecs.channelsOut / 16, forwardSpecs.channelsIn / 16,
+                    forwardSpecs.activations[0]->id());
+
+                sharedMemoryBytesPerWarp_Input = sizeof(half) * 32 *
+                    (forwardSpecs.channelsIn + forwardSpecs.channelsOut);
+            }
+            int sharedMemoryBytesPerWarp_Output = //TODO: bias
+                Tensor::BytesPerEntry[networkParameterPrecision(Tensor::GRADIENTS)] *
+                forwardSpecs.channelsIn * forwardSpecs.channelsOut;
+            int sharedMemoryBytesPerWarp = std::max(
+                sharedMemoryBytesPerWarp_Input,
+                sharedMemoryBytesPerWarp_Output);
+
+            //compile
+            ckl::KernelFunction fun = kl->getKernel(
+                kernelName,
+                codeTemplate,
+                encodingConstantNames,
+                compileFlags).value();
+
+            //compute shared memory
+            int bestBlockSize = fun.bestBlockSize();
+            int blockSize = bestBlockSize;
+            int sharedMemorySize = bestBlockSize / 32 * sharedMemoryBytesPerWarp;
+            if (sharedMemorySize > MAX_SHARED_MEMORY_BYTES)
+            {
+                int numWarps = MAX_SHARED_MEMORY_BYTES / sharedMemoryBytesPerWarp;
+                blockSize = numWarps * 32;
+                if (blockSize == 0)
+                {
+                    throw configuration_error("Layer %d too large for block-wise weight update!", layer);
+                }
+                std::cout << "It would be possible to fit more threads into each block in terms of register usage, but the shared memory is not enough. " <<
+                    "Reducing the block size from " << bestBlockSize << " down to " << blockSize << std::endl;
+                sharedMemorySize = numWarps * sharedMemoryBytesPerWarp;
+            }
+
+            //set cached kernel
+            ck.fun = fun;
+            ck.blockSize = blockSize;
+            ck.sharedMemorySize = sharedMemorySize;
+            if (layer == 0) {
+                ck.encodingIdx2ConstantName.resize(encodings_.size());
+                for (int encodingIdx = 0; encodingIdx < encodings_.size(); ++encodingIdx)
+                {
+                    auto e = encodings_[encodingIdx];
+                    if (e->hasParameters())
+                    {
+                        std::string constantName = constantNameForEncoding(e, encodingIdx);
+                        ak.adjoint.encodingIdx2ConstantName[encodingIdx] = constantName;
+                        ak.adjoint.encodingPtr2ConstantName[e] = constantName;
+                    }
+                }
+            }
+        }
+    }
 
     backwardKernel_[flags] = std::move(ak);
 }
@@ -843,6 +924,9 @@ void FusedNetwork::adjoint(const Tensor& input, const Tensor& adjOutput, Adjoint
     CHECK_DTYPE(adjOutput, precisionOut());
 
     const bool hasInputGradients = adjointFlags & GRADIENTS_INPUT;
+    const bool hasNetworkGradients = adjointFlags & GRADIENTS_NETWORK_WEIGHTS;
+    const bool hasEncodingGradients = adjointFlags & GRADIENTS_INPUT_ENCODINGS;
+
     if (hasInputGradients)
     {
         CHECK_ERROR(adjInput.defined(), "Input gradients requested, but adjInput is undefined");
@@ -885,10 +969,57 @@ void FusedNetwork::adjoint(const Tensor& input, const Tensor& adjOutput, Adjoint
     ak.adjoint.fun.call(
         minGridSize, ak.adjoint.blockSize, ak.adjoint.sharedMemorySize, stream,
         numel, inputAcc, adjOutputAcc, adjInputAcc, networkParams, forwardTmpMemory, adjointTmpMemory);
+    CKL_SAFE_CALL(cudaEventRecord(adjointEvent_, stream));
 
-    //LAUNCH CUTLASS reductions for the weight+bias
-    //TODO implement CUTLASS launches
-    //and enqueue events
+    //LAUNCH KERNELS FOR WEIGHT+BIAS UPDATE
+    if (hasNetworkGradients)
+    {
+        for (int layer=0; layer<layers_.size(); ++layer)
+        {
+            const auto& ls = layers_[layer];
+            const auto& ali = backwardInfo_[layer];
+            auto& ck = ak.layers[layer];
+
+            if (!ck.fun.defined()) continue; //not available
+
+            //fill constants of the encodings (first layer only, if needed at all)
+            if (!ck.encodingIdx2ConstantName.empty()) {
+                for (int encodingIdx = 0; encodingIdx < encodings_.size(); ++encodingIdx)
+                {
+                    auto e = encodings_[encodingIdx];
+                    if (e->hasParameters())
+                    {
+                        std::string constantName = ck.encodingIdx2ConstantName[encodingIdx];
+                        e->fillParameterConstant(constantName, ak.adjoint.fun, stream);
+                    }
+                }
+            }
+
+            //assemble parameter pointers
+            void* outAdjWeights = static_cast<char*>(parametersGradients_.rawPtr()) +
+                parametersGradients_.bytesPerEntry() * ls.weightsStart;
+            half* aIn = static_cast<half*>(tmpMemoryAdjoint) + (ali.offsetAdjOut * numel);
+            void* bIn;
+            if (ali.offsetIn>=0)
+            {
+                bIn = static_cast<half*>(tmpMemoryAdjoint) + (ali.offsetIn * numel);
+            } else
+            {
+                //the input positions
+                bIn = *reinterpret_cast<void**>(&inputAcc);
+            }
+
+            //launch kernel
+            int gridSize = 1; //one block only!
+            CKL_SAFE_CALL(cudaStreamWaitEvent(ali.stream, adjointEvent_));
+            std::cout << "Launch layer " << layer << " with a block size of " << ck.blockSize << " and a shared memory size of " <<
+                ck.sharedMemorySize << std::endl;
+            ck.fun.call(gridSize, ck.blockSize, ck.sharedMemorySize, ali.stream,
+                numel, outAdjWeights, aIn, bIn);
+            CKL_SAFE_CALL(cudaEventRecord(ali.event, ali.stream));
+            CKL_SAFE_CALL(cudaStreamWaitEvent(stream, ali.event));
+        }
+    }
 }
 
 void FusedNetwork::clearCachedKernels()

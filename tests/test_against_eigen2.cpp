@@ -12,18 +12,27 @@
 using namespace qmlp;
 using namespace qmlp::tests;
 
-TEMPLATE_TEST_CASE_SIG("test-agaist-eigen-2", "[eigen]", 
-    ((int Channels0, int Channels1, TestActivationType Activ1, int Channels2, TestActivationType Activ2),
-        Channels0, Channels1, Activ1, Channels2, Activ2),
-    (16, 16, TestActivationType::SINE, 16, TestActivationType::IDENTITY),
-    (16, 16, TestActivationType::SINE, 16, TestActivationType::SINE),
-    (16, 16, TestActivationType::RELU, 16, TestActivationType::IDENTITY),
-    (16, 16, TestActivationType::SINE, 32, TestActivationType::SINE),
-    (16, 16, TestActivationType::RELU, 32, TestActivationType::IDENTITY),
-    (32, 48, TestActivationType::SINE, 16, TestActivationType::SINE),
-    (32, 48, TestActivationType::RELU, 16, TestActivationType::IDENTITY),
-    (32, 48, TestActivationType::SINE, 32, TestActivationType::SINE),
-    (32, 48, TestActivationType::RELU, 32, TestActivationType::IDENTITY)
+TEMPLATE_TEST_CASE_SIG("test-against-eigen-2", "[eigen]", 
+    ((int Channels0, int Channels1, bool Bias1, TestActivationType Activ1, int Channels2, bool Bias2, TestActivationType Activ2),
+        Channels0, Channels1, Bias1, Activ1, Channels2, Bias2, Activ2),
+    (16, 16, false, TestActivationType::SINE, 16, false, TestActivationType::IDENTITY)
+    //(16, 16, false, TestActivationType::SINE, 16, false, TestActivationType::SINE),
+    //(16, 16, false, TestActivationType::RELU, 16, false, TestActivationType::IDENTITY),
+    //(16, 16, false, TestActivationType::SINE, 32, false, TestActivationType::SINE),
+    //(16, 16, false, TestActivationType::RELU, 32, false, TestActivationType::IDENTITY),
+    //(32, 48, false, TestActivationType::SINE, 16, false, TestActivationType::SINE),
+    //(32, 48, false, TestActivationType::RELU, 16, false, TestActivationType::IDENTITY),
+    //(32, 48, false, TestActivationType::SINE, 32, false, TestActivationType::SINE),
+    //(32, 48, false, TestActivationType::RELU, 32, false, TestActivationType::IDENTITY),
+    //(16, 16, true, TestActivationType::SINE, 16, true, TestActivationType::IDENTITY),
+    //(16, 16, true, TestActivationType::SINE, 16, true, TestActivationType::SINE),
+    //(16, 16, true, TestActivationType::RELU, 16, true, TestActivationType::IDENTITY),
+    //(16, 16, true, TestActivationType::SINE, 32, true, TestActivationType::SINE),
+    //(16, 16, true, TestActivationType::RELU, 32, true, TestActivationType::IDENTITY),
+    //(32, 48, true, TestActivationType::SINE, 16, true, TestActivationType::SINE),
+    //(32, 48, true, TestActivationType::RELU, 16, true, TestActivationType::IDENTITY),
+    //(32, 48, true, TestActivationType::SINE, 32, true, TestActivationType::SINE),
+    //(32, 48, true, TestActivationType::RELU, 32, true, TestActivationType::IDENTITY)
     )
 {
     nlohmann::json cfg = {
@@ -42,12 +51,12 @@ TEMPLATE_TEST_CASE_SIG("test-agaist-eigen-2", "[eigen]",
         {"network", nlohmann::json::array({
             nlohmann::json::object({
                 {"n_out", Channels1},
-                {"bias", true},
+                {"bias", Bias1},
                 {"activation", TestActivationConfigName[int(Activ1)]}
             }),
             nlohmann::json::object({
                 {"n_out", Channels2},
-                {"bias", true},
+                {"bias", Bias2},
                 {"activation", TestActivationConfigName[int(Activ2)]}
             }),
         })}
@@ -95,9 +104,13 @@ TEMPLATE_TEST_CASE_SIG("test-agaist-eigen-2", "[eigen]",
         EigenVectorX bias0 = toEigenVector(network->networkParameter(0, true, qmlp::Tensor::INFERENCE));
         EigenMatrixX weights1 = toEigenMatrix(network->networkParameter(1, false, qmlp::Tensor::INFERENCE));
         EigenVectorX bias1 = toEigenVector(network->networkParameter(1, true, qmlp::Tensor::INFERENCE));
-        EigenMatrixX outTemp0 = (weights0 * input).colwise() + bias0;
+        EigenMatrixX outTemp0 = Bias1
+            ? ((weights0 * input).colwise() + bias0).eval()
+            : (weights0 * input).eval();
         EigenMatrixX out0 = TestActivation<Activ1>::forward(outTemp0);
-        EigenMatrixX outTemp1 = (weights1 * out0).colwise() + bias1;
+        EigenMatrixX outTemp1 = Bias2
+            ? ((weights1 * out0).colwise() + bias1).eval()
+            : (weights1 * out0).eval();
         EigenMatrixX out1 = TestActivation<Activ2>::forward(outTemp1);
         outputEigenHost = out1.transpose();
     }
@@ -124,9 +137,13 @@ TEMPLATE_TEST_CASE_SIG("test-agaist-eigen-2", "[eigen]",
         EigenVectorX bias0 = toEigenVector(network->networkParameter(0, true, qmlp::Tensor::INFERENCE));
         EigenMatrixX weights1 = toEigenMatrix(network->networkParameter(1, false, qmlp::Tensor::INFERENCE));
         EigenVectorX bias1 = toEigenVector(network->networkParameter(1, true, qmlp::Tensor::INFERENCE));
-        EigenMatrixX outTemp0 = (weights0 * input).colwise() + bias0;
+        EigenMatrixX outTemp0 = Bias1
+            ? ((weights0 * input).colwise() + bias0).eval()
+            : (weights0 * input).eval();
         EigenMatrixX out0 = TestActivation<Activ1>::forward(outTemp0);
-        EigenMatrixX outTemp1 = (weights1 * out0).colwise() + bias1;
+        EigenMatrixX outTemp1 = Bias2
+            ? ((weights1 * out0).colwise() + bias1).eval()
+            : (weights1 * out0).eval();
         EigenMatrixX out1 = TestActivation<Activ2>::forward(outTemp1);
         //backward
         EigenMatrixX adjOut1 = adjOutputHost.transpose();
@@ -160,6 +177,30 @@ TEMPLATE_TEST_CASE_SIG("test-agaist-eigen-2", "[eigen]",
         int tmpSize = adjointWithFlags(qmlp::FusedNetwork::GRADIENTS_INPUT);
         INFO("size of temporary memory: " << tmpSize);
         COMPARE_TENSOR_AND_MATRIX(adjInputDevice, adjInputEigen);
+    }
+
+    //only weight derivatives
+    {
+        int tmpSize = adjointWithFlags(qmlp::FusedNetwork::GRADIENTS_NETWORK_WEIGHTS);
+        INFO("size of temporary memory: " << tmpSize);
+        //COMPARE_TENSOR_AND_MATRIX(
+        //    network->networkParameter(0, false, Tensor::GRADIENTS),
+        //    adjWeights0Eigen);
+        COMPARE_TENSOR_AND_MATRIX(
+            network->networkParameter(1, false, Tensor::GRADIENTS),
+            adjWeights1Eigen);
+        if constexpr(Bias1)
+        {
+            COMPARE_TENSOR_AND_VECTOR(
+                network->networkParameter(0, true, Tensor::GRADIENTS),
+                adjBias0Eigen);
+        }
+        if constexpr (Bias2)
+        {
+            COMPARE_TENSOR_AND_VECTOR(
+                network->networkParameter(1, true, Tensor::GRADIENTS),
+                adjBias1Eigen);
+        }
     }
 }
 

@@ -12,6 +12,7 @@
 #include <ckl/kernel_loader.h>
 
 QUICKMLP_NAMESPACE_BEGIN
+
 class FusedNetwork : NonAssignable
 {
 public:
@@ -73,32 +74,40 @@ private:
 
     struct AdjointLayerInfo
     {
-        //multiply with numel to get the offset into the adjoint-post-matmul array
+        //multiply with numel to get the offset into the adjoint-post-matmul array.
+        //To get the offset in bytes, multiply by the datatype.
         int offsetAdjOut;
         //multiply with numel to get the offset into the pre-activation array.
         // for weight derivatives, the activation has to be applied on-the-fly again
         //In the first layer, this value is -1, as the input encodings are needed again.
+        //To get the offset in bytes, multiply by the datatype.
         int offsetIn;
 
-        CompiledKernel adjWeightKernel;
-        CompiledKernel adjBiasKernel;
+        CUstream stream;
+        CUevent event;
     };
     struct AdjointKernel
     {
+        //Adjoint kernel for the inner network
         CompiledKernel adjoint;
-        std::vector<AdjointLayerInfo> layers;
+        //Adjoint kernels for the weight+bias updates per layer
+        std::vector<CompiledKernel> layers;
+        //The number of bytes for storing the adjoint values of the inner layers.
+        //Needed for weight+bias derivatives
         int perEntryAdjointMemoryBytes;
     };
     std::optional<AdjointKernel> backwardKernel_[ADJOINT_MODE_MAX_COMBINATIONS];
+
     //The number of bytes for storing the intermediate forward values.
     //If network weights are optimized, this amount needs to be doubled
     //because adjoint variables of those have to be stored in global memory
     //for computing the network weights afterwards using CUTLASS
     int perEntryForwardMemoryBytes_;
 
-    //CUstreams for training
-    std::vector<CUstream> trainingStreams_;
-    std::vector<CUevent> trainingEvents_;
+    //Information on offsets + streams
+    //for weight+bias derivatives
+    std::vector<AdjointLayerInfo> backwardInfo_;
+    CUevent adjointEvent_;
 
 public:
     //Size of the matrix fragments (hardware limitation of the tensor cores)

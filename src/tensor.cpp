@@ -16,6 +16,7 @@ namespace internal
 }
 
 const int Tensor::BytesPerEntry[] = { 4, 2 };
+const std::string Tensor::DatatypePerEntry[] = { "float", "half"};
 
 Tensor::Tensor(Precision precision, const std::vector<int32_t>& sizes)
   : hostsData_(true)
