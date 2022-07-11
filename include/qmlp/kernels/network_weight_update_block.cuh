@@ -133,7 +133,7 @@ struct OHatTmpLoader
     __device__ static void loadToFragment(fragment_t dst[MDiv16][2], const half* tmpShared)
     {
         //TEST
-        printLayer(0, threadIdx.x, tmpShared + (M * threadIdx.x % 32), M);
+        printLayer(10, threadIdx.x, tmpShared + (M * threadIdx.x % 32), M);
 
 #pragma unroll
         for (int cout = 0; cout < MDiv16; ++cout)
@@ -200,7 +200,7 @@ struct HiddenLoader
     __device__ static void loadToFragment(fragment_t dst[2][NDiv16], const half* tmpShared)
     {
         //TEST
-        printLayer(1, threadIdx.x, tmpShared + (N*threadIdx.x%32), N);
+        printLayer(11, threadIdx.x, tmpShared + (N*threadIdx.x%32), N);
 
         //note: load as row-major for transposing!
         for (int cin = 0; cin < NDiv16; ++cin)
@@ -289,7 +289,12 @@ __global__ void WeightUpdateSingleBlockKernel(
         warpIndex += numWarps)
     {
         //the logical index into the arrays (not needed)
-        // int elementIndex = warpIndex + lineID;
+        [[maybe_unused]]
+        int elementIndex = warpIndex + lineID;
+
+        //TEST
+        printLayer(0, elementIndex, aIn + (M * elementIndex), M);
+        printLayer(1, elementIndex, bIn + (N * elementIndex), N);
 
         //the remaining elements in the array.
         //If this values is <32, this warp is only half filled,
