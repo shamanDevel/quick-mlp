@@ -4,27 +4,39 @@
 #include <host_defines.h>
 #endif
 
-namespace qmlp {namespace kernel
-{
-	template<typename T>
-	__forceinline__ __host__ __device__ T roundUp(T numToRound, int multiple)
-	{
-		//assert(multiple);
-		return ((numToRound + multiple - 1) / multiple) * multiple;
-	}
+#include <qmlp/kernels/common.cuh>
 
-	/**
-	 * Rounds up the non-negative number 'numToRound'
-	 * up to the next multiple of the positive number 'multiple'.
-	 * 'multiple' must be a power of 2.
-	 */
-	template<typename T>
-	__forceinline__ __host__ __device__ T roundUpPower2(T numToRound, int multiple)
-	{
-		//assert(multiple && ((multiple & (multiple - 1)) == 0));
-		return (numToRound + multiple - 1) & -multiple;
-	}
-}}
+QUICKMLP_KERNEL_NAMESPACE_BEGIN
+
+/**
+ * Computes integer division x/y with round-up mode.
+ * All values must be non-negative (and y positive)!
+ */
+template<typename T>
+__forceinline__ __host__ __device__ T divRoundUp(T x, int y)
+{
+	//https://stackoverflow.com/a/2745086/1786598
+	return (x + y - 1) / y;
+}
+
+template<typename T>
+__forceinline__ __host__ __device__ T roundUp(T numToRound, int multiple)
+{
+	//assert(multiple);
+	return ((numToRound + multiple - 1) / multiple) * multiple;
+}
+
+/**
+ * Rounds up the non-negative number 'numToRound'
+ * up to the next multiple of the positive number 'multiple'.
+ * 'multiple' must be a power of 2.
+ */
+template<typename T>
+__forceinline__ __host__ __device__ T roundUpPower2(T numToRound, int multiple)
+{
+	//assert(multiple && ((multiple & (multiple - 1)) == 0));
+	return (numToRound + multiple - 1) & -multiple;
+}
 
 #define KERNEL_3D_LOOP(i, j, k, virtual_size) 												\
 	for (ptrdiff_t __i = blockIdx.x * blockDim.x + threadIdx.x;							\
@@ -54,3 +66,5 @@ namespace qmlp {namespace kernel
 		 i < numel_pow32;												\
 		 i += blockDim.x) {												\
 		 const bool valid = i < numel;
+
+QUICKMLP_KERNEL_NAMESPACE_END

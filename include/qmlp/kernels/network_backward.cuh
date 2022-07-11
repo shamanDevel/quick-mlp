@@ -13,6 +13,7 @@
 #endif
 #include <cuda_fp16.h>
 
+#include <qmlp/kernels/common.cuh>
 #include <qmlp/kernels/layer.cuh>
 #include <qmlp/kernels/tensor.cuh>
 #include <qmlp/kernels/loops.cuh>
@@ -21,8 +22,7 @@ $$INCLUDES$$
 
 $$ENCODING_CONSTANTS$$
 
-
-namespace qmlp { namespace kernel {
+QUICKMLP_KERNEL_NAMESPACE_BEGIN
 
 namespace activations
 {
@@ -102,5 +102,4 @@ $$CALL_ENCODINGS$$
     KERNEL_1D_LOOP_END
 }
 
-}}
-
+QUICKMLP_KERNEL_NAMESPACE_END

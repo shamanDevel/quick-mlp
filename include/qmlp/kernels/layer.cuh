@@ -8,7 +8,9 @@
 #include <stdio.h>
 #endif
 
-namespace qmlp { namespace kernel {
+#include <qmlp/kernels/common.cuh>
+
+QUICKMLP_KERNEL_NAMESPACE_BEGIN
 
 static inline __device__
 void printLayer(int layer, int idx, const half* data, int numel)
@@ -68,8 +70,8 @@ struct Layer
             //initialize with zeros
             for (int cout = 0; cout < OutChannelsDiv16; ++cout)
             {
-                fill_fragment(c_frag[cout][0], __float2half(0));
-                fill_fragment(c_frag[cout][1], __float2half(0));
+                fill_fragment(c_frag[cout][0], hZERO());
+                fill_fragment(c_frag[cout][1], hZERO());
             }
         }
 
@@ -179,11 +181,10 @@ struct Layer
         }
 
         //compute adjoint of the input
-        const half ZERO = __float2half(0.f);
         for (int cin = 0; cin < InChannelsDiv16; ++cin)
         {
-            fill_fragment(c_frag[cin][0], ZERO);
-            fill_fragment(c_frag[cin][1], ZERO);
+            fill_fragment(c_frag[cin][0], hZERO());
+            fill_fragment(c_frag[cin][1], hZERO());
         }
         for (int i = 0; i < InChannelsDiv16; ++i) {
             for (int j = 0; j < 2; ++j) {
@@ -202,6 +203,4 @@ struct Layer
     }
 };
 
-
-
-}}
+QUICKMLP_KERNEL_NAMESPACE_END

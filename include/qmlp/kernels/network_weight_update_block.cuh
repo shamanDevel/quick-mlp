@@ -13,6 +13,7 @@
 #endif
 #include <cuda_fp16.h>
 
+#include <qmlp/kernels/common.cuh>
 #include <qmlp/kernels/layer.cuh>
 #include <qmlp/kernels/tensor.cuh>
 #include <qmlp/kernels/loops.cuh>
@@ -22,7 +23,7 @@ $$INCLUDES$$
 $$ENCODING_CONSTANTS$$
 
 
-namespace qmlp { namespace kernel {
+QUICKMLP_KERNEL_NAMESPACE_BEGIN
 
 namespace activations
 {
@@ -59,10 +60,157 @@ public:
  * \brief Loader for loading hat{O}_tmp into shared memory and registers.
  * This is used as the A-matrix for the matmul.
  */
-template<int MDiv16>
+template<int _MDiv16>
 struct OHatTmpLoader
 {
-    
+    /**
+     * Input datatype for loading from global memory
+     */
+    typedef half* input_t;
+
+    /**
+     * Layout of the matrix in memory.
+     * This matches the layout of \c adjIntermediateOut in \c Layer::adjoint
+     */
+    typedef nvcuda::wmma::col_major layout_t;
+    typedef nvcuda::wmma::fragment<nvcuda::wmma::matrix_b, 16, 16, 16, half, layout_t> fragment_t;
+    static constexpr int MDiv16 = _MDiv16;
+    static constexpr int M = MDiv16 * 16;
+
+    static constexpr int SharedMemoryHalf = 32 * M;
+
+    /**
+     * Loads the current block from global memory \c srcGlobal into shared memory
+     * \c tmpShared. The per-warp shared memory has \ref SharedMemoryHalf entries
+     *
+     * \param numel the number of active elements. If <32, the warp is not fully active
+     */
+    __device__ static void loadToShared(half* tmpShared, const input_t srcGlobal, int warpID, int numel)
+    {
+        assert(numel >= 32); //always full warp assumed
+        //fast path for full warps
+        //CUDA can read 4 bytes at once -> use half2
+        const half2* src = reinterpret_cast<const half2*>(srcGlobal + warpID*32*M);
+        half2* dst = reinterpret_cast<half2*>(tmpShared);
+
+        //now load 32*M entries, linear in memory. Layout does not matter here
+        const int lineID = threadIdx.x % 32;
+        static constexpr int M2 = MDiv16 * 8; //number of half2 entries
+#pragma unroll
+        for (int cout = 0; cout < M2; ++cout)
+        {
+            dst[32 * cout + lineID] = src[32 * cout + lineID];
+        }
+    }
+
+#if 0
+    /**
+     * Reduce the entries into \c dst along the K-dimension (32 elements/warps).
+     */
+    __device__ static void reduceK(StaticArray<half, M>& dstShared, const half* tmpShared)
+    {
+        //Because the matrix is stored in column major, the individual batches
+        //of the batched reduction are linear in memory.
+        //This means, we can perform a reduction on M/2 half2-elements (of 32 elements each)
+        //instead of M half-elements.
+        //Always four warps jointly 
+        const int lineID = threadIdx.x % 32;
+
+#pragma unroll
+        for (int m=0; m<MDiv16; ++m)
+        {
+            
+        }
+    }
+#endif
+
+    /**
+     * Loads the current block from shared memory \c tmpShared into the
+     * wmma::fragments for the tensor core multiplication
+     */
+    __device__ static void loadToFragment(fragment_t dst[MDiv16][2], const half* tmpShared)
+    {
+#pragma unroll
+        for (int cout = 0; cout < MDiv16; ++cout)
+        {
+            using namespace nvcuda::wmma;
+            load_matrix_sync(dst[cout][0], tmpShared + 16 * cout, M);
+            load_matrix_sync(dst[cout][1], tmpShared + 16 * cout + 16 * M, M);
+        }
+    }
+};
+
+/**
+ * \brief Loader for loading I^T into shared memory and registers.
+ * The input I^T is not available directly, only the pre-activation output of the previous
+ * layout. Therefore, run the activation functions again .
+ * Also, the memory layout in global memory is column major. But we need a transposed
+ * fragment, hence treat it as row major during loading.
+ */
+template<int _NDiv16, typename Activation>
+struct HiddenLoader
+{
+    /**
+     * Input datatype for loading from global memory
+     */
+    typedef half* input_t;
+
+    /**
+     * Layout of the matrix in memory.
+     * This matches the layout of \c adjIntermediateOut in \c Layer::adjoint
+     */
+    typedef nvcuda::wmma::row_major layout_t;
+    typedef nvcuda::wmma::fragment<nvcuda::wmma::matrix_b, 16, 16, 16, half, layout_t> fragment_t;
+    static constexpr int NDiv16 = _NDiv16;
+    static constexpr int N = NDiv16 * 16;
+
+    static constexpr int SharedMemoryHalf = 32 * N;
+
+    /**
+     * Loads the current block from global memory \c srcGlobal into shared memory
+     * \c tmpShared. The per-warp shared memory has \ref SharedMemoryHalf entries
+     */
+    __device__ static void loadToShared(half* tmpShared, const input_t srcGlobal, int warpID, int numel)
+    {
+        assert(numel >= 32); //always full warp assumed
+        //fast path for full warps
+        //CUDA can read 4 bytes at once -> use half2
+        const half2* src = reinterpret_cast<const half2*>(srcGlobal + warpID*32*N);
+        half2* dst = reinterpret_cast<half2*>(tmpShared);
+
+        //now load 32*M entries, linear in memory. Layout does not matter here
+        const int lineID = threadIdx.x % 32;
+        static constexpr int N2 = NDiv16 * 8; //number of half2 entries
+#pragma unroll
+        for (int cin = 0; cin < N2; ++cin)
+        {
+            dst[32 * cin + lineID] = src[32 * cin + lineID];
+        }
+    }
+
+    /**
+     * Loads the current block from shared memory \c tmpShared into the
+     * wmma::fragments for the tensor core multiplication
+     */
+    __device__ static void loadToFragment(fragment_t dst[2][NDiv16], const half* tmpShared)
+    {
+        //note: load as row-major for transposing!
+        for (int cin = 0; cin < NDiv16; ++cin)
+        {
+            using namespace nvcuda::wmma;
+            load_matrix_sync(dst[0][cin], tmpShared + 16 * cin, 32);
+            load_matrix_sync(dst[1][cin], tmpShared + 16 * cin + 16 * 32, 32);
+        }
+        //run the activations again
+        for (int j = 0; j < 2; ++j) {
+            for (int i = 0; i < NDiv16; ++i) {
+                for (int t = 0; t < dst[0][0].num_elements; t++)
+                {
+                    dst[j][i].x[t] = Activation::forward(dst[i][j].x[t]);
+                }
+            }
+        }
+    }
 };
 
 /**
@@ -71,113 +219,113 @@ struct OHatTmpLoader
  * M and N must be multiples of 16 and compile-time constants, specified by MDiv16, NDiv16.
  * K is flexible and can be large.
  *
- * 
+ * TODO: Bias reduction
  *
  * \tparam AccuT the type of C, can be half or float
- * \tparam ALoader the 
- * \tparam BLoader 
- * \tparam MDiv16 
- * \tparam NDiv16 
- * \param numel 
- * \param aLoader 
- * \param bLoader 
- * \param out 
+ * \tparam ALoader the loader for matrix A of shape M*K
+ * \tparam BLoader the loader for matrix B of shape K*N
+ * \param numel the number of active elements
+ * \param outAdjWeights the adjoint of weight matrix, row-major
  */
-template<typename AccuT, typename ALoader, typename BLoader, int MDiv16, int NDiv16>
-__device__ void matmulAxBt_block(int numel, const ALoader& aLoader, const BLoader& bLoader, AccuT* out)
+template<typename AccuT, typename ALoader, typename BLoader,
+    typename AInput = typename ALoader::template input_t,
+    typename BInput = typename BLoader::template input_t>
+__global__ void WeightUpdateSingleBlockKernel(
+    int numel, AccuT* outAdjWeights, AInput aIn, BInput bIn)
 {
+    const int warpID = threadIdx.x / 32;
+    const int lineID = threadIdx.x % 32;
+    const int numWarps = blockDim.x / 32;
+    assert(gridDim.x == 1); //only a single block support (no atomics / grid-wise reduction)
+
+    constexpr int MDiv16 = ALoader::template MDiv16;
+    constexpr int NDiv16 = BLoader::template NDiv16;
+    constexpr int M = MDiv16 * 16;
+    constexpr int N = NDiv16 * 16;
+    typedef typename ALoader::template fragment_t AFragment_t;
+    typedef typename BLoader::template fragment_t BFragment_t;
+
     using namespace nvcuda::wmma;
 
     //per-warp: store the result of matrix C, shape MxN
     fragment<accumulator, 16, 16, 16, AccuT> c_frag[MDiv16][NDiv16];
+    for (int m=0; m<MDiv16; ++m) for (int n=0M; n<NDiv16; ++n)
+    {
+        fill_fragment(c_frag[m][n], hZERO());
+    }
+
     //bias
     StaticArray<AccuT, MDiv16> bias_frag;
 
     //matrices A and B
-
+    constexpr int SharedBytesPerWarp_Input = //storage for A,B
+        sizeof(half) * (
+        ALoader::template SharedMemoryHalf +
+        BLoader::template SharedMemoryHalf);
+    constexpr int SharedBytesPerWarp_Output = //storage for C
+        sizeof(AccuT) * M * N;
+    constexpr int SharedBytesPerWarp = max(SharedBytesPerWarp_Input, SharedBytesPerWarp_Output);
+    extern __shared__ char sIntermediate[];
+    half* intermediateWarp = reinterpret_cast<half*>(sIntermediate + SharedBytesPerWarp_Input * warpID);
+    AFragment_t a_frag[MDiv16][2];
+    BFragment_t b_frag[2][NDiv16];
 
     //now loop over the partitions of K of size 32
-    const int warpID = threadIdx.x / 32;
-    const int lineID = threadIdx.x % 32;
-    const int numWarps = blockDim.x / 32;
-    KERNEL_1D_LOOP_BLOCKSYNC(index, valid, numel)
+    const auto warps_pow32 = divRoundUp(numel, 32);
+    for (int warpIndex = warpID; 
+        warpIndex < warps_pow32;
+        warpIndex += numWarps)
     {
-        
-    }
-    KERNEL_1D_LOOP_END
-}
+        //the logical index into the arrays
+        int elementIndex = warpIndex + lineID;
+        //the remaining elements in the array.
+        //If this values is <32, this warp is only half filled,
+        //and special care must be taken for loading+saving
+        int elementsLeft = numel - warpIndex * 32;
 
-__global__ void NetworkKernelWeightUpdateBlock(
-    int numel,
-    const Tensor2Read<float> inputs, //shape (numel, Cin)
-    const Tensor2Read<float> adjOutputs, //shape (numel, Cout)
-    Tensor2RW<float> adjInputs,
-    const half* networkParameters,
-    const half* forwardTmpMemory, //O_tmp from the forward pass
-    half* adjointTmpMemory //hat(O_tmp), if weight gradients are requested else nullptr
-    )
-{
-    constexpr int MAX_CHANNELS = $$MAX_CHANNELS$;
-    //shared memory for the intermediate states
-    extern __shared__ half sIntermediateResults[];
+        //load A and B to shared
+        half* aShared = intermediateWarp;
+        half* bShared = intermediateWarp + ALoader::template SharedMemoryHalf;
+        ALoader::template loadToShared(aShared, aIn, warpIndex, elementsLeft);
+        BLoader::template loadToShared(bShared, bIn, warpIndex, elementsLeft);
 
-    const int warpID = threadIdx.x / 32;
-    const int lineID = threadIdx.x % 32;
-    const int numWarps = blockDim.x / 32;
+        //load to fragments
+        ALoader::template loadToFragment(a_frag, aShared);
+        BLoader::template loadToFragment(b_frag, bShared);
 
-    constexpr int INPUT_PAD_START = $$INPUT_PAD_START$$;
-    constexpr int CHANNELS_IN = $$CHANNELS_IN$$;
-    constexpr int CHANNELS_OUT = $$CHANNELS_OUT$$;
-    constexpr bool HAS_INPUT_GRADIENTS = $$HAS_INPUT_GRADIENTS$$;
-    const half hZERO = __float2half(0);
-
-    KERNEL_1D_LOOP_SYNC(index, valid, numel)
-    {
-        //storage for the intermediate results
-        half* adjIntermediateResultsWarp = sIntermediateResults + 32 * MAX_CHANNELS * warpID;
-        half* adjIntermediateResultsThread = sIntermediateResults + MAX_CHANNELS * threadIdx.x;
-
-        //fetch adj-output
-        if (valid)
+        //matmul, accumulates in the per-warp c-matrix
+        for (int k = 0; k < 2; ++k)
         {
-            for (int cout = 0; cout < CHANNELS_OUT; ++cout)
+            for (int m = 0; m < MDiv16; ++m) for (int n = 0M; n < NDiv16; ++n)
             {
-                adjIntermediateResultsThread[cout] = __float2half(
-                    adjOutputs[index][cout]);
+                mma_sync(c_frag[m][n], a_frag[m][k], b_frag[k][n], c_frag[m][n]);
             }
         }
-
-        //call layers
-        //e.g. qmlp::kernel::Layer<InChannelsDiv16, OutChannelsDiv16, MAX_CHANNELS, Bias, Activation>
-        //          ::template adjoint<ComputeWeightGradients>(
-        //              networkParameters+offsetWeights, networkParameters+offsetBias, intermediateResultsWarp,
-        //              forwardTmpMemory+offsetIntermediate, adjointTmpMemory+offsetIntermediate);
-        //TODO: prefetch weights in shared memory?
-
-        //CODE GENERATION [[
-$$CALL_NETWORK_LAYERS$$
-        //]] CODE GENERATIION
-
-        //adjoint encodings
-        if (valid) {
-            auto encodingInput = inputs[index];
-            TensorAccessor<float, 1, DefaultPtrTraits, int> adjEncodingInput;
-            if constexpr (HAS_INPUT_GRADIENTS) {
-                adjEncodingInput = adjInputs[index];
-            }
-
-            half* adjEncodingOutput = adjIntermediateResultsThread;
-
-            //called e.g. EncodingIdentity::template adjoint<HAS_INPUT_GRADIENTS, parameterGradients>(
-            //                     encodingInput, adjEncodingOutput, adjEncodingInput);
-            //CODE GENERATION [[
-$$CALL_ENCODINGS$$
-            //]] CODE GENERATIION
-        }
-        
     }
-    KERNEL_1D_LOOP_END
+
+    //reduce C across warps
+    //but first, we need to store it to shared memory
+    AccuT* cShared = reinterpret_cast<AccuT*>(sIntermediate + SharedBytesPerWarp_Output * warpID);
+    for (int m = 0; m < MDiv16; ++m) for (int n = 0; n < NDiv16; ++n)
+    {
+        store_matrix_sync(cShared + 16*n + N*16*m, c_frag[m][n], mem_row_major);
+    }
+    //now perform the reduction
+    constexpr int reduceBatches = M * N;
+    constexpr int reduceElements = numWarps;
+    for (int i=threadIdx.x; i<reduceBatches; i+=blockDim.x)
+    {
+        AccuT accu = cShared[i];
+        for (int j = 1; j < reduceElements; ++j)
+            accu += cShared[i + j * reduceBatches];
+        cShared[i] = accu;
+    }
+    //write the matrix back to global memory
+    for (int i = threadIdx.x; i < reduceBatches; i += blockDim.x)
+    {
+        outAdjWeights[i] += cShared[i];
+    }
 }
 
-}}
+QUICKMLP_KERNEL_NAMESPACE_END
 
