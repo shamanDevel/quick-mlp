@@ -150,18 +150,22 @@ TEMPLATE_TEST_CASE_SIG("test-against-eigen-2", "[eigen]",
         std::cout << "adjOut1 = " << adjOut1.block(0, 0, adjOut1.rows(), 1).transpose() << "\n";
 
         EigenMatrixX adjOutTemp1 = TestActivation<Activ2>::adjoint(outTemp1, adjOut1);
-        std::cout << "adjOutTemp1 = " << adjOutTemp1.block(0, 0, adjOutTemp1.rows(), 1).transpose() << "\n";
         adjBias1Eigen = adjOutTemp1.rowwise().sum();
         adjWeights1Eigen = adjOutTemp1 * out0.transpose();
         EigenMatrixX adjOut0 = weights1.transpose() * adjOutTemp1;
+
+        std::cout << "adjOutTemp1 =\n" << adjOutTemp1 << "\n";
+        std::cout << "out0^T = \n" << out0.transpose().eval() << "\n";
+        //std::cout << "adjOutTemp1 = " << adjOutTemp1.block(0, 0, adjOutTemp1.rows(), 1).transpose() << "\n";
         std::cout << "adjOut0 = " << adjOut0.block(0, 0, adjOut0.rows(), 1).transpose() << "\n";
 
         EigenMatrixX adjOutTemp0 = TestActivation<Activ1>::adjoint(outTemp0, adjOut0);
-        std::cout << "adjOutTemp0 = " << adjOutTemp0.block(0, 0, adjOutTemp0.rows(), 1).transpose() << "\n";
         adjBias0Eigen = adjOutTemp0.rowwise().sum();
         adjWeights0Eigen = adjOutTemp0 * input.transpose();
         EigenMatrixX adjInput = weights0.transpose() * adjOutTemp0;
+        std::cout << "adjOutTemp0 = " << adjOutTemp0.block(0, 0, adjOutTemp0.rows(), 1).transpose() << "\n";
         std::cout << "adjInput = " << adjInput.block(0, 0, adjInput.rows(), 1).transpose() << "\n";
+
         adjInputEigen = adjInput.transpose();
     }
 

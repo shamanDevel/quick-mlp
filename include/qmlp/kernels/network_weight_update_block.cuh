@@ -105,35 +105,14 @@ struct OHatTmpLoader
         }
     }
 
-#if 0
-    /**
-     * Reduce the entries into \c dst along the K-dimension (32 elements/warps).
-     */
-    __device__ static void reduceK(StaticArray<half, M>& dstShared, const half* tmpShared)
-    {
-        //Because the matrix is stored in column major, the individual batches
-        //of the batched reduction are linear in memory.
-        //This means, we can perform a reduction on M/2 half2-elements (of 32 elements each)
-        //instead of M half-elements.
-        //Always four warps jointly 
-        const int lineID = threadIdx.x % 32;
-
-#pragma unroll
-        for (int m=0; m<MDiv16; ++m)
-        {
-            
-        }
-    }
-#endif
-
     /**
      * Loads the current block from shared memory \c tmpShared into the
      * wmma::fragments for the tensor core multiplication
      */
     __device__ static void loadToFragment(fragment_t dst[MDiv16][2], const half* tmpShared)
     {
-        //TEST
-        printLayer(10, threadIdx.x, tmpShared + (M * threadIdx.x % 32), M);
+        ////TEST
+        //printLayer(10, threadIdx.x, tmpShared + (M * (threadIdx.x % 32)), M);
 
 #pragma unroll
         for (int cout = 0; cout < MDiv16; ++cout)
@@ -199,8 +178,8 @@ struct HiddenLoader
      */
     __device__ static void loadToFragment(fragment_t dst[2][NDiv16], const half* tmpShared)
     {
-        //TEST
-        printLayer(11, threadIdx.x, tmpShared + (N*threadIdx.x%32), N);
+        ////TEST
+        //printLayer(11, threadIdx.x, tmpShared + (N*(threadIdx.x%32)), N);
 
         //note: load as row-major for transposing!
         for (int cin = 0; cin < NDiv16; ++cin)
@@ -278,7 +257,7 @@ __global__ void WeightUpdateSingleBlockKernel(
     constexpr int SharedBytesPerWarp = max(SharedBytesPerWarp_Input, SharedBytesPerWarp_Output);
 
     extern __shared__ char sIntermediate[];
-    half* intermediateWarp = reinterpret_cast<half*>(sIntermediate + SharedBytesPerWarp_Input * warpID);
+    half* intermediateWarp_Input = reinterpret_cast<half*>(sIntermediate + SharedBytesPerWarp_Input * warpID);
     AFragment_t a_frag[MDiv16][2];
     BFragment_t b_frag[2][NDiv16];
 
@@ -303,8 +282,8 @@ __global__ void WeightUpdateSingleBlockKernel(
         if (lineID == 0) printf("warp %03d, idx=%d -> elements left=%d\n", warpID, warpIndex, elementsLeft);
 
         //load A and B to shared
-        half* aShared = intermediateWarp;
-        half* bShared = intermediateWarp + ALoader::SharedMemoryHalf;
+        half* aShared = intermediateWarp_Input;
+        half* bShared = intermediateWarp_Input + ALoader::SharedMemoryHalf;
         ALoader::loadToShared(aShared, aIn, warpIndex, elementsLeft);
         BLoader::loadToShared(bShared, bIn, warpIndex, elementsLeft);
 
@@ -320,32 +299,45 @@ __global__ void WeightUpdateSingleBlockKernel(
                 mma_sync(c_frag[m][n], a_frag[m][k], b_frag[k][n], c_frag[m][n]);
             }
         }
+
+        ////TEST
+        //for (int m = 0; m < MDiv16; ++m) for (int n = 0; n < NDiv16; ++n)
+        //    for (int t = 0; t < c_frag[0][0].num_elements; t++)
+        //    {
+        //        printf("w=%02d, m=%d, n=%d, t=%d -> %.3f\n", 
+        //            lineID, m, n, t, c_frag[m][n].x[t]);
+        //    }
     }
 
     //reduce C across warps
     //but first, we need to store it to shared memory
-    AccuT* cShared = reinterpret_cast<AccuT*>(sIntermediate + SharedBytesPerWarp_Output * warpID);
+    AccuT* cSharedWarp = reinterpret_cast<AccuT*>(sIntermediate + SharedBytesPerWarp_Output * warpID);
     for (int m = 0; m < MDiv16; ++m) for (int n = 0; n < NDiv16; ++n)
     {
-        store_matrix_sync(cShared + 16*n + N*16*m, c_frag[m][n], N, mem_row_major);
+        store_matrix_sync(cSharedWarp + 16 * n + N * 16 * m, c_frag[m][n], N, mem_row_major);
     }
-    //now perform the reduction
+
+    ////test
+    //if (warpID == 0 && lineID==0)
+    //{
+    //    for (int i = 0; i < M * N; ++i) printf("i[%d]=%.3f\n", i, cSharedWarp[i]);
+    //}
+
+    //now perform the reduction over the whole block
+    __syncthreads();
+    AccuT* cSharedBlock = reinterpret_cast<AccuT*>(sIntermediate);
     constexpr int reduceBatches = M * N;
     const int reduceElements = numWarps;
     for (int i=threadIdx.x; i<reduceBatches; i+=blockDim.x)
     {
-        AccuT accu = cShared[i];
-        printf("cShared[%d,0]=%.4f\n", i, cShared[i]);
+        AccuT accu = cSharedBlock[i];
+        //printf("cShared[%d,0]=%.4f\n", i, accu);
         for (int j = 1; j < reduceElements; ++j) {
-            accu += cShared[i + j * reduceBatches];
-            //printf("cShared[%d,%d]=%.4f\n", i, j, cShared[i + j * reduceBatches]);
+            accu += cSharedBlock[i + j * reduceBatches];
+            //printf("cShared[%d,%d]=%.4f\n", i, j, cSharedBlock[i + j * reduceBatches]);
         }
-        cShared[i] = accu;
-    }
-    //write the matrix back to global memory
-    for (int i = threadIdx.x; i < reduceBatches; i += blockDim.x)
-    {
-        outAdjWeights[i] += cShared[i];
+        //write the matrix back to global memory
+        outAdjWeights[i] += accu;
     }
 }
 
