@@ -69,7 +69,7 @@ TEMPLATE_TEST_CASE_SIG("test-against-eigen-1", "[eigen]",
     WARN("network parameters: " << network->networkParameterCount());
 
     //create parameter tensor
-    std::default_random_engine rng(42);
+    std::default_random_engine rng(42);  // NOLINT(cert-msc51-cpp)
     qmlp::Tensor parametersDevice(
         network->networkParameterPrecision(qmlp::Tensor::INFERENCE),
         { network->networkParameterCount() });

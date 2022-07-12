@@ -73,7 +73,7 @@ TEMPLATE_TEST_CASE_SIG("test-against-eigen-2", "[eigen]",
     WARN("network parameters: " << network->networkParameterCount());
 
     //create parameter tensor
-    std::default_random_engine rng(42);
+    std::default_random_engine rng(42);  // NOLINT(cert-msc51-cpp)
     qmlp::Tensor parametersDevice(
         network->networkParameterPrecision(qmlp::Tensor::INFERENCE),
         { network->networkParameterCount() });
@@ -154,8 +154,8 @@ TEMPLATE_TEST_CASE_SIG("test-against-eigen-2", "[eigen]",
         adjWeights1Eigen = adjOutTemp1 * out0.transpose();
         EigenMatrixX adjOut0 = weights1.transpose() * adjOutTemp1;
 
-        std::cout << "adjOutTemp1 =\n" << adjOutTemp1 << "\n";
-        std::cout << "out0^T = \n" << out0.transpose().eval() << "\n";
+        std::cout << "adjOutTemp1 =\n" << adjOutTemp1.format(SmallFmt) << "\n";
+        std::cout << "out0^T = \n" << out0.transpose().eval().format(SmallFmt) << "\n";
         //std::cout << "adjOutTemp1 = " << adjOutTemp1.block(0, 0, adjOutTemp1.rows(), 1).transpose() << "\n";
         std::cout << "adjOut0 = " << adjOut0.block(0, 0, adjOut0.rows(), 1).transpose() << "\n";
 

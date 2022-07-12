@@ -1,7 +1,7 @@
 #pragma once
 
 /*
- * This is the template for the fully fused network.
+ * This is the template for the weight update (gradient computation).
  * Modified by the host code before compiled,
  * everything in $$..$$ will be replaced
  */
