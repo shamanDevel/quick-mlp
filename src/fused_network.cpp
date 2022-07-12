@@ -812,6 +812,25 @@ void FusedNetwork::compileBackwardKernel(int flags)
         //GENERATE CODE
         std::vector<std::string> encodingConstantNames;
         fillEncodingsAndActivations(codeTemplate, encodingConstantNames);
+        replaceAll(codeTemplate, "$$INPUT_PAD_START$$", std::to_string(inputPadStart));
+        replaceAll(codeTemplate, "$$CHANNELS_IN$$", std::to_string(channelsIn));
+        //call encodings
+        std::stringstream callEncodings;
+        int encodingOffset = 0;
+        for (int encodingIdx = 0; encodingIdx < encodings_.size(); ++encodingIdx)
+        {
+            auto e = encodings_[encodingIdx];
+            callEncodings << e->qualifiedName() << "::forward(encodingInput, encodingOutput + " <<
+                encodingOffset;
+            encodingOffset += e->numOutputChannels();
+            if (e->hasParameters())
+            {
+                std::string constantName = constantNameForEncoding(e, encodingIdx);
+                callEncodings << ", " << constantName;
+            }
+            callEncodings << ");\n";
+        }
+        replaceAll(codeTemplate, "$$CALL_ENCODINGS$$", callEncodings.str());
 
         for (int layer=0; layer<layers_.size(); ++layer)
         {
@@ -827,9 +846,13 @@ void FusedNetwork::compileBackwardKernel(int flags)
             if (layer==0)
             {
                 //first layer, re-do the input parametrization again
-                //TODO: implement re-computing or loading from memory
-                std::cerr << "Warning: optimizing the first layer not implemented yet" << std::endl;
-                continue;
+                kernelName = tinyformat::format(
+                    "qmlp::kernel::WeightUpdateSingleBlockKernel<%s, qmlp::kernel::OHatTmpLoader<%d>, qmlp::kernel::InputLoader<%d> >",
+                    Tensor::DatatypePerEntry[networkParameterPrecision(Tensor::GRADIENTS)],
+                    forwardSpecs.channelsOut / 16, forwardSpecs.channelsIn / 16);
+
+                sharedMemoryBytesPerWarp_Input = sizeof(half) * 32 *
+                    (forwardSpecs.channelsIn + forwardSpecs.channelsOut);
             }
             else
             {
@@ -971,6 +994,9 @@ void FusedNetwork::adjoint(const Tensor& input, const Tensor& adjOutput, Adjoint
         numel, inputAcc, adjOutputAcc, adjInputAcc, networkParams, forwardTmpMemory, adjointTmpMemory);
     CKL_SAFE_CALL(cudaEventRecord(adjointEvent_, stream));
 
+    //TEST
+    CKL_SAFE_CALL(cudaDeviceSynchronize());
+
     //LAUNCH KERNELS FOR WEIGHT+BIAS UPDATE
     if (hasNetworkGradients)
     {
@@ -999,25 +1025,29 @@ void FusedNetwork::adjoint(const Tensor& input, const Tensor& adjOutput, Adjoint
             void* outAdjWeights = static_cast<char*>(parametersGradients_.rawPtr()) +
                 parametersGradients_.bytesPerEntry() * ls.weightsStart;
             half* aIn = static_cast<half*>(tmpMemoryAdjoint) + (ali.offsetAdjOut * numel);
-            void* bIn;
-            if (ali.offsetIn>=0)
-            {
-                bIn = static_cast<half*>(tmpMemoryAdjoint) + (ali.offsetIn * numel);
-            } else
-            {
-                //the input positions
-                bIn = *reinterpret_cast<void**>(&inputAcc);
-            }
 
             //launch kernel
             int gridSize = 1; //one block only!
             CKL_SAFE_CALL(cudaStreamWaitEvent(ali.stream, adjointEvent_));
             std::cout << "Launch layer " << layer << " with a block size of " << ck.blockSize << " and a shared memory size of " <<
                 ck.sharedMemorySize << std::endl;
-            ck.fun.call(gridSize, ck.blockSize, ck.sharedMemorySize, ali.stream,
-                numel, outAdjWeights, aIn, bIn);
+            if (ali.offsetIn>=0)
+            {
+                const half* bIn = static_cast<const half*>(tmpMemoryForward) + (ali.offsetIn * numel);
+                ck.fun.call(gridSize, ck.blockSize, ck.sharedMemorySize, ali.stream,
+                    numel, outAdjWeights, aIn, bIn);
+            }
+            else
+            {
+                auto bIn = inputAcc;
+                ck.fun.call(gridSize, ck.blockSize, ck.sharedMemorySize, ali.stream,
+                    numel, outAdjWeights, aIn, bIn);
+            }
             CKL_SAFE_CALL(cudaEventRecord(ali.event, ali.stream));
             CKL_SAFE_CALL(cudaStreamWaitEvent(stream, ali.event));
+
+            //TEST
+            CKL_SAFE_CALL(cudaDeviceSynchronize());
         }
     }
 }

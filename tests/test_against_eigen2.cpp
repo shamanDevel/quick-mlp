@@ -163,7 +163,10 @@ TEMPLATE_TEST_CASE_SIG("test-against-eigen-2", "[eigen]",
         adjBias0Eigen = adjOutTemp0.rowwise().sum();
         adjWeights0Eigen = adjOutTemp0 * input.transpose();
         EigenMatrixX adjInput = weights0.transpose() * adjOutTemp0;
-        std::cout << "adjOutTemp0 = " << adjOutTemp0.block(0, 0, adjOutTemp0.rows(), 1).transpose() << "\n";
+
+        std::cout << "adjOutTemp0 =\n" << adjOutTemp0.format(SmallFmt) << "\n";
+        std::cout << "input^T = \n" << input.transpose().eval().format(SmallFmt) << "\n";
+        //std::cout << "adjOutTemp0 = " << adjOutTemp0.block(0, 0, adjOutTemp0.rows(), 1).transpose() << "\n";
         std::cout << "adjInput = " << adjInput.block(0, 0, adjInput.rows(), 1).transpose() << "\n";
 
         adjInputEigen = adjInput.transpose();
@@ -187,9 +190,9 @@ TEMPLATE_TEST_CASE_SIG("test-against-eigen-2", "[eigen]",
     {
         int tmpSize = adjointWithFlags(qmlp::FusedNetwork::GRADIENTS_NETWORK_WEIGHTS);
         INFO("size of temporary memory: " << tmpSize);
-        //COMPARE_TENSOR_AND_MATRIX(
-        //    network->networkParameter(0, false, Tensor::GRADIENTS),
-        //    adjWeights0Eigen);
+        COMPARE_TENSOR_AND_MATRIX(
+            network->networkParameter(0, false, Tensor::GRADIENTS),
+            adjWeights0Eigen);
         COMPARE_TENSOR_AND_MATRIX(
             network->networkParameter(1, false, Tensor::GRADIENTS),
             adjWeights1Eigen);

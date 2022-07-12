@@ -112,7 +112,7 @@ struct OHatTmpLoader
     __device__ static void loadToFragment(fragment_t dst[MDiv16][2], const half* tmpShared)
     {
         ////TEST
-        //printLayer(10, threadIdx.x, tmpShared + (M * (threadIdx.x % 32)), M);
+        //printLayer(0, threadIdx.x, tmpShared + (M * (threadIdx.x % 32)), M);
 
 #pragma unroll
         for (int cout = 0; cout < MDiv16; ++cout)
@@ -141,7 +141,8 @@ struct HiddenLoader
 
     /**
      * Layout of the matrix in memory.
-     * This matches the layout of \c adjIntermediateOut in \c Layer::adjoint
+     * This is the transpose of the forward temporary memory, that is
+     * stored as col-major in Layer::inference
      */
     typedef nvcuda::wmma::row_major layout_t;
     typedef nvcuda::wmma::fragment<nvcuda::wmma::matrix_b, 16, 16, 16, half, layout_t> fragment_t;
@@ -179,7 +180,7 @@ struct HiddenLoader
     __device__ static void loadToFragment(fragment_t dst[2][NDiv16], const half* tmpShared)
     {
         ////TEST
-        //printLayer(11, threadIdx.x, tmpShared + (N*(threadIdx.x%32)), N);
+        //printLayer(1, threadIdx.x, tmpShared + (N*(threadIdx.x%32)), N);
 
         //note: load as row-major for transposing!
         for (int cin = 0; cin < NDiv16; ++cin)
@@ -197,6 +198,97 @@ struct HiddenLoader
                 }
             }
         }
+    }
+};
+
+/**
+ * \brief Loader for loading I^T into shared memory and registers.
+ * First, the input encodings are run again and the results stored in shared memory.
+ * Then, the input matrix is transposed during loading into registers.
+ */
+template<int _NDiv16>
+struct InputLoader
+{
+    /**
+     * Input datatype for loading from global memory
+     */
+    typedef Tensor2Read<float> input_t;
+
+    /**
+     * Layout of the matrix in shared memory.
+     */
+    typedef nvcuda::wmma::row_major layout_t;
+    typedef nvcuda::wmma::fragment<nvcuda::wmma::matrix_b, 16, 16, 16, half, layout_t> fragment_t;
+    static constexpr int NDiv16 = _NDiv16;
+    static constexpr int N = NDiv16 * 16;
+
+    static constexpr int SharedMemoryHalf = 32 * N;
+
+    /**
+     * Loads the current block from global memory \c srcGlobal into shared memory
+     * \c tmpShared. The per-warp shared memory has \ref SharedMemoryHalf entries
+     */
+    __device__ static void loadToShared(half* tmpShared, const input_t srcGlobal, int warpID, int numel)
+    {
+        const int lineID = threadIdx.x % 32;
+        const bool valid = lineID < numel;
+
+        constexpr int INPUT_PAD_START = $$INPUT_PAD_START$$;
+        constexpr int CHANNELS_IN = $$CHANNELS_IN$$;
+
+        half* intermediateResultsThread = tmpShared + N * lineID;
+        if (valid)
+        {
+            const int index = 32 * warpID + lineID;
+            auto encodingInput = srcGlobal[index];
+            half* encodingOutput = intermediateResultsThread;
+
+            //CODE GENERATION [[
+$$CALL_ENCODINGS$$
+            //]] CODE GENERATIION
+
+            //padding
+            for (int cin = INPUT_PAD_START; cin < CHANNELS_IN; ++cin)
+            {
+                intermediateResultsThread[cin] = hZERO();
+            }
+        }
+        else
+        {
+            //invalid index, fill with zeros to avoid NaNs
+            for (int cin = 0; cin < CHANNELS_IN; ++cin)
+            {
+                intermediateResultsThread[cin] = hZERO();
+            }
+        }
+    }
+
+    /**
+     * Loads the current block from shared memory \c tmpShared into the
+     * wmma::fragments for the tensor core multiplication
+     */
+    __device__ static void loadToFragment(fragment_t dst[2][NDiv16], const half* tmpShared)
+    {
+        ////TEST
+        //printLayer(1, threadIdx.x, tmpShared + (N*(threadIdx.x%32)), N);
+
+        //note: load as row-major for transposing!
+        for (int cin = 0; cin < NDiv16; ++cin)
+        {
+            using namespace nvcuda::wmma;
+            load_matrix_sync(dst[0][cin], tmpShared + 16 * cin, N);
+            load_matrix_sync(dst[1][cin], tmpShared + 16 * cin + 16*N, N);
+        }
+
+        ////TEST
+        //__syncwarp();
+        //const int lineID = threadIdx.x % 32;
+        //for (int n = 0; n < NDiv16; ++n) for (int k=0; k<2; ++k)
+        //    for (int t = 0; t < dst[k][n].num_elements; t++)
+        //    {
+        //        printf("w=%02d, n=%d, k=%d, t=%d -> B=%.3f\n",
+        //            lineID, n, k, t, __half2float(dst[k][n].x[t]));
+        //    }
     }
 };
 
@@ -271,10 +363,6 @@ __global__ void WeightUpdateSingleBlockKernel(
         [[maybe_unused]]
         int elementIndex = warpIndex + lineID;
 
-        //TEST
-        printLayer(0, elementIndex, aIn + (M * elementIndex), M);
-        printLayer(1, elementIndex, bIn + (N * elementIndex), N);
-
         //the remaining elements in the array.
         //If this values is <32, this warp is only half filled,
         //and special care must be taken for loading+saving
@@ -304,7 +392,7 @@ __global__ void WeightUpdateSingleBlockKernel(
         //for (int m = 0; m < MDiv16; ++m) for (int n = 0; n < NDiv16; ++n)
         //    for (int t = 0; t < c_frag[0][0].num_elements; t++)
         //    {
-        //        printf("w=%02d, m=%d, n=%d, t=%d -> %.3f\n", 
+        //        printf("w=%02d, m=%d, n=%d, t=%d -> C=%.3f\n", 
         //            lineID, m, n, t, c_frag[m][n].x[t]);
         //    }
     }

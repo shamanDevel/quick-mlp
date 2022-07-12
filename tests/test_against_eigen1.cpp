@@ -20,20 +20,32 @@ using namespace qmlp;
 using namespace qmlp::tests;
 
 TEMPLATE_TEST_CASE_SIG("test-against-eigen-1", "[eigen]",
-    ((int Channels0, int Channels1, TestActivationType Activ1),
-        Channels0, Channels1, Activ1),
-    (16, 16, TestActivationType::SINE),
-    (16, 16, TestActivationType::RELU),
-    (16, 16, TestActivationType::IDENTITY),
-    (16, 32, TestActivationType::SINE),
-    (16, 32, TestActivationType::RELU),
-    (16, 32, TestActivationType::IDENTITY),
-    (48, 16, TestActivationType::SINE),
-    (48, 16, TestActivationType::RELU),
-    (48, 16, TestActivationType::IDENTITY),
-    (48, 32, TestActivationType::SINE),
-    (48, 32, TestActivationType::RELU),
-    (48, 32, TestActivationType::IDENTITY)
+    ((int Channels0, int Channels1, bool Bias1, TestActivationType Activ1),
+        Channels0, Channels1, Bias1, Activ1),
+    (16, 16, false, TestActivationType::SINE)//,
+    //(16, 16, false, TestActivationType::RELU),
+    //(16, 16, false, TestActivationType::IDENTITY),
+    //(16, 32, false, TestActivationType::SINE),
+    //(16, 32, false, TestActivationType::RELU),
+    //(16, 32, false, TestActivationType::IDENTITY),
+    //(48, 16, false, TestActivationType::SINE),
+    //(48, 16, false, TestActivationType::RELU),
+    //(48, 16, false, TestActivationType::IDENTITY),
+    //(48, 32, false, TestActivationType::SINE),
+    //(48, 32, false, TestActivationType::RELU),
+    //(48, 32, false, TestActivationType::IDENTITY),
+    //(16, 16, true, TestActivationType::SINE),
+    //(16, 16, true, TestActivationType::RELU),
+    //(16, 16, true, TestActivationType::IDENTITY),
+    //(16, 32, true, TestActivationType::SINE),
+    //(16, 32, true, TestActivationType::RELU),
+    //(16, 32, true, TestActivationType::IDENTITY),
+    //(48, 16, true, TestActivationType::SINE),
+    //(48, 16, true, TestActivationType::RELU),
+    //(48, 16, true, TestActivationType::IDENTITY),
+    //(48, 32, true, TestActivationType::SINE),
+    //(48, 32, true, TestActivationType::RELU),
+    //(48, 32, true, TestActivationType::IDENTITY)
 )
 {
     nlohmann::json cfg = {
@@ -52,7 +64,7 @@ TEMPLATE_TEST_CASE_SIG("test-against-eigen-1", "[eigen]",
         {"network", nlohmann::json::array({
             nlohmann::json::object({
                 {"n_out", Channels1},
-                {"bias", true},
+                {"bias", Bias1},
                 {"activation", TestActivationConfigName[int(Activ1)]}
             })
         })}
@@ -61,7 +73,7 @@ TEMPLATE_TEST_CASE_SIG("test-against-eigen-1", "[eigen]",
     auto root = current.parent_path().parent_path();
     auto configFolder = root / "network_configs";
 
-    int N = 32;
+    int N = 513;
     CUstream stream = nullptr;
 
     //create network
@@ -70,6 +82,7 @@ TEMPLATE_TEST_CASE_SIG("test-against-eigen-1", "[eigen]",
 
     //create parameter tensor
     std::default_random_engine rng(42);  // NOLINT(cert-msc51-cpp)
+    std::uniform_real_distribution<EigenScalar_t> distr;
     qmlp::Tensor parametersDevice(
         network->networkParameterPrecision(qmlp::Tensor::INFERENCE),
         { network->networkParameterCount() });
@@ -84,7 +97,12 @@ TEMPLATE_TEST_CASE_SIG("test-against-eigen-1", "[eigen]",
     //create input and output tensors
     qmlp::Tensor inputDevice(network->precisionIn(), { N, network->channelsIn() });
     qmlp::Tensor outputDevice(network->precisionOut(), { N, network->channelsOut() });
-    EigenMatrixX inputHost = EigenMatrixX::Random(N, network->channelsIn());
+    auto uniformGenerator = [&rng, &distr]() {return distr(rng); };
+    EigenMatrixX inputHost = EigenMatrixX::NullaryExpr(N, network->channelsIn(), uniformGenerator);
+    ////TEST
+    //inputHost.setZero();
+    //inputHost(1, 0) = 2.f;
+    //copy to GPU
     toGpuTensor(inputDevice, inputHost);
 
     //INFERENCE
@@ -98,7 +116,9 @@ TEMPLATE_TEST_CASE_SIG("test-against-eigen-1", "[eigen]",
         auto input = inputHost.transpose();
         EigenMatrixX weights0 = toEigenMatrix(network->networkParameter(0, false, qmlp::Tensor::INFERENCE));
         EigenVectorX bias0 = toEigenVector(network->networkParameter(0, true, qmlp::Tensor::INFERENCE));
-        EigenMatrixX outTemp0 = (weights0 * input).colwise() + bias0;
+        EigenMatrixX outTemp0 = Bias1
+            ? ((weights0 * input).colwise() + bias0).eval()
+            : (weights0 * input).eval();
         EigenMatrixX out0 = TestActivation<Activ1>::forward(outTemp0);
         outputEigenHost = out0.transpose();
     }
@@ -123,19 +143,22 @@ TEMPLATE_TEST_CASE_SIG("test-against-eigen-1", "[eigen]",
         auto input = inputHost.transpose();
         EigenMatrixX weights0 = toEigenMatrix(network->networkParameter(0, false, qmlp::Tensor::INFERENCE));
         EigenVectorX bias0 = toEigenVector(network->networkParameter(0, true, qmlp::Tensor::INFERENCE));
-        EigenMatrixX outTemp0 = (weights0 * input).colwise() + bias0;
+        EigenMatrixX outTemp0 = Bias1
+            ? ((weights0 * input).colwise() + bias0).eval()
+            : (weights0 * input).eval();
         EigenMatrixX out0 = TestActivation<Activ1>::forward(outTemp0);
 
         //backward
         EigenMatrixX adjOut0 = adjOutputHost.transpose();
-        std::cout << "adjOut0 = " << adjOut0.block(0, 0, adjOut0.rows(), 1).transpose() << "\n";
-
         EigenMatrixX adjOutTemp0 = TestActivation<Activ1>::adjoint(outTemp0, adjOut0);
-        std::cout << "adjOutTemp0 = " << adjOutTemp0.block(0, 0, adjOutTemp0.rows(), 1).transpose() << "\n";
         adjBias0Eigen = adjOutTemp0.rowwise().sum();
         adjWeights0Eigen = adjOutTemp0 * input.transpose();
         EigenMatrixX adjInput = weights0.transpose() * adjOutTemp0;
-        std::cout << "adjInput = " << adjInput.block(0, 0, adjInput.rows(), 1).transpose() << "\n";
+
+        //std::cout << "adjOutTemp0 =\n" << adjOutTemp0.format(SmallFmt) << "\n";
+        //std::cout << "input^T = \n" << input.transpose().eval().format(SmallFmt) << "\n";
+        //std::cout << "adjInput = " << adjInput.block(0, 0, adjInput.rows(), 1).transpose() << "\n";
+
         adjInputEigen = adjInput.transpose();
     }
 
@@ -152,6 +175,21 @@ TEMPLATE_TEST_CASE_SIG("test-against-eigen-1", "[eigen]",
         std::cout.precision(3);
         INFO("size of temporary memory: " << tmpSize);
         COMPARE_TENSOR_AND_MATRIX(adjInputDevice, adjInputEigen);
+    }
+
+    //only weight derivatives
+    {
+        int tmpSize = adjointWithFlags(qmlp::FusedNetwork::GRADIENTS_NETWORK_WEIGHTS);
+        INFO("size of temporary memory: " << tmpSize);
+        COMPARE_TENSOR_AND_MATRIX(
+            network->networkParameter(0, false, Tensor::GRADIENTS),
+            adjWeights0Eigen);
+        if constexpr (Bias1)
+        {
+            COMPARE_TENSOR_AND_VECTOR(
+                network->networkParameter(0, true, Tensor::GRADIENTS),
+                adjBias0Eigen);
+        }
     }
 }
 
