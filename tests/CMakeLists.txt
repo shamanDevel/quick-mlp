@@ -25,6 +25,7 @@ set(QUICKMLP_TEST_FILES
     main.cpp
     catch.hpp
     test_eval_simple.cpp
+    eigen_half.h
     test_against_eigen.h
     test_against_eigen1.cpp
     test_against_eigen2.cpp

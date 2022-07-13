@@ -7,6 +7,21 @@
 
 QUICKMLP_NAMESPACE_BEGIN
 
+static int fetchSharedMemory()
+{
+    cudaDeviceProp props;
+    CKL_SAFE_CALL(cudaGetDeviceProperties(&props, 0));
+    if (props.warpSize != FusedNetwork::WARP_SIZE)
+    {
+        throw configuration_error("The warp size has changed, it is no longer %d but %d. This invalidates all algorithms!",
+            FusedNetwork::WARP_SIZE, props.warpSize);
+    }
+    std::cout << "Available shared memory on the current device in bytes: " <<
+        props.sharedMemPerBlock << std::endl;
+    return static_cast<int>(props.sharedMemPerBlock);
+}
+const int FusedNetwork::MAX_SHARED_MEMORY_BYTES = fetchSharedMemory();
+
 FusedNetwork::FusedNetwork(const nlohmann::json& cfg, const std::filesystem::path& parent)
     : channelsIn_(cfg.at("num_inputs").get<int>())
     , channelsOut_(cfg.at("num_outputs").get<int>())
@@ -615,6 +630,7 @@ size_t FusedNetwork::forwardMemory(int numElements, AdjointModeFlags adjointFlag
     //compile kernel
     compileForwardKernel();
 
+    numElements = roundUp(numElements, WARP_SIZE);
     return perEntryForwardMemoryBytes_ * static_cast<size_t>(numElements);
 }
 
@@ -923,6 +939,7 @@ void FusedNetwork::compileBackwardKernel(int flags)
 size_t FusedNetwork::adjointMemory(int numElements, AdjointModeFlags adjointFlags)
 {
     compileBackwardKernel(adjointFlags);
+    numElements = roundUp(numElements, WARP_SIZE);
     return backwardKernel_[adjointFlags]->perEntryAdjointMemoryBytes * static_cast<size_t>(numElements);
 }
 

@@ -89,20 +89,26 @@ struct OHatTmpLoader
      */
     __device__ static void loadToShared(half* tmpShared, const input_t srcGlobal, int warpID, int numel)
     {
-        assert(numel >= 32); //always full warp assumed
-        //fast path for full warps
+        //always load a full warp of 32 values.
+        //The network evaluation (forward+backward) pads half-filled last warps with zeros
+
         //CUDA can read 4 bytes at once -> use half2
         const half2* src = reinterpret_cast<const half2*>(srcGlobal + warpID*32*M);
         half2* dst = reinterpret_cast<half2*>(tmpShared);
 
+        //TEST
+        //printLayer(0, threadIdx.x, srcGlobal + (warpID * 32 * M) + (M * (threadIdx.x % 32)), M);
+
+        __syncwarp();
         //now load 32*M entries, linear in memory. Layout does not matter here
         const int lineID = threadIdx.x % 32;
         static constexpr int M2 = MDiv16 * 8; //number of half2 entries
 #pragma unroll
         for (int cout = 0; cout < M2; ++cout)
         {
-            dst[32 * cout + lineID] = src[32 * cout + lineID];
+            //dst[32 * cout + lineID] = src[32 * cout + lineID];
         }
+        __syncwarp();
     }
 
     /**
@@ -111,8 +117,10 @@ struct OHatTmpLoader
      */
     __device__ static void loadToFragment(fragment_t dst[MDiv16][2], const half* tmpShared)
     {
-        ////TEST
-        //printLayer(0, threadIdx.x, tmpShared + (M * (threadIdx.x % 32)), M);
+        //TEST
+        __syncwarp();
+        const int lineID = threadIdx.x % 32;
+        printLayerBinary(0, threadIdx.x, tmpShared + (M * lineID), M);
 
 #pragma unroll
         for (int cout = 0; cout < MDiv16; ++cout)
@@ -157,8 +165,9 @@ struct HiddenLoader
      */
     __device__ static void loadToShared(half* tmpShared, const input_t srcGlobal, int warpID, int numel)
     {
-        assert(numel >= 32); //always full warp assumed
-        //fast path for full warps
+        //always load a full warp of 32 values.
+        //The network evaluation (forward+backward) pads half-filled last warps with zeros
+
         //CUDA can read 4 bytes at once -> use half2
         const half2* src = reinterpret_cast<const half2*>(srcGlobal + warpID*32*N);
         half2* dst = reinterpret_cast<half2*>(tmpShared);
@@ -243,14 +252,16 @@ struct InputLoader
             auto encodingInput = srcGlobal[index];
             half* encodingOutput = intermediateResultsThread;
 
+#if 0
             //CODE GENERATION [[
 $$CALL_ENCODINGS$$
             //]] CODE GENERATIION
+#endif
 
             //padding
             for (int cin = INPUT_PAD_START; cin < CHANNELS_IN; ++cin)
             {
-                intermediateResultsThread[cin] = hZERO();
+                intermediateResultsThread[cin] = __float2half(2.0);//hZERO();
             }
         }
         else
@@ -258,7 +269,7 @@ $$CALL_ENCODINGS$$
             //invalid index, fill with zeros to avoid NaNs
             for (int cin = 0; cin < CHANNELS_IN; ++cin)
             {
-                intermediateResultsThread[cin] = hZERO();
+                intermediateResultsThread[cin] = __float2half(1.0);//hZERO();
             }
         }
     }
@@ -269,8 +280,8 @@ $$CALL_ENCODINGS$$
      */
     __device__ static void loadToFragment(fragment_t dst[2][NDiv16], const half* tmpShared)
     {
-        ////TEST
-        //printLayer(1, threadIdx.x, tmpShared + (N*(threadIdx.x%32)), N);
+        //TEST
+        printLayer(1, threadIdx.x, tmpShared + (N*(threadIdx.x%32)), N);
 
         //note: load as row-major for transposing!
         for (int cin = 0; cin < NDiv16; ++cin)
@@ -349,6 +360,26 @@ __global__ void WeightUpdateSingleBlockKernel(
     constexpr int SharedBytesPerWarp = max(SharedBytesPerWarp_Input, SharedBytesPerWarp_Output);
 
     extern __shared__ char sIntermediate[];
+
+    //TEST
+    half* dummyShared = reinterpret_cast<half*>(sIntermediate);
+    int Ndummy = (ALoader::SharedMemoryHalf + BLoader::SharedMemoryHalf) * numWarps;
+    half dummyValue = __float2half(-5.0f);
+    if (threadIdx.x==0)
+    {
+        printf("num warps: %d, fill %d half entries\n", numWarps, Ndummy);
+        printf("Fill addresses from 0x%llx to 0x%llx\n",
+            reinterpret_cast<long long>(sIntermediate), reinterpret_cast<long long>(sIntermediate + Ndummy + 1));
+        for (int i = 0; i < Ndummy; ++i) dummyShared[i] = dummyValue;
+    }
+    int pred = 1;
+    int count = __syncthreads_count(pred);
+    __threadfence();
+    if (threadIdx.x == 0) printf("Syncthreads count: %d\n", count);
+
+    //printf("[%03d] warpID=%d, lineID=%02d, SharedBytesPerWarp_Input=%d\n",
+    //    threadIdx.x, warpID, lineID, SharedBytesPerWarp_Input);
+
     half* intermediateWarp_Input = reinterpret_cast<half*>(sIntermediate + SharedBytesPerWarp_Input * warpID);
     AFragment_t a_frag[MDiv16][2];
     BFragment_t b_frag[2][NDiv16];
@@ -359,6 +390,9 @@ __global__ void WeightUpdateSingleBlockKernel(
         warpIndex < warps_pow32;
         warpIndex += numWarps)
     {
+        printf("[%03d] warp=%d, line=%02d: shared difference: %d\n",
+            threadIdx.x, warpID, lineID, int(intermediateWarp_Input - reinterpret_cast<half*>(sIntermediate)));
+
         //the logical index into the arrays (not needed)
         [[maybe_unused]]
         int elementIndex = warpIndex + lineID;
@@ -367,7 +401,9 @@ __global__ void WeightUpdateSingleBlockKernel(
         //If this values is <32, this warp is only half filled,
         //and special care must be taken for loading+saving
         int elementsLeft = numel - warpIndex * 32;
-        if (lineID == 0) printf("warp %03d, idx=%d -> elements left=%d\n", warpID, warpIndex, elementsLeft);
+
+        //TEST
+        //if (lineID == 0) printf("warp %03d, idx=%d -> elements left=%d\n", warpID, warpIndex, elementsLeft);
 
         //load A and B to shared
         half* aShared = intermediateWarp_Input;

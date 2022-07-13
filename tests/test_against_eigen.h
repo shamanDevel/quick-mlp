@@ -6,6 +6,7 @@
 #include <fstream>
 #include <iostream>
 #include <Eigen/Core>
+#include <cuda_fp16.h>
 
 #include <qmlp/fused_network.h>
 #include <qmlp/tmp_memory.h>
@@ -154,7 +155,7 @@ namespace tests{
         REQUIRE(actual.cols() == expected.cols());
         static const float REL_ERROR = 0.05f; //5%
         static const float ABS_ERROR = 1e-3f;
-        static const float ALLOWED_EXCEED = 0.01f; //1%
+        static const float ALLOWED_EXCEED = 0.05f; //5%
         int numExceed = 0;
         for (int i = 0; i < actual.rows(); ++i) for (int j = 0; j < actual.cols(); ++j)
         {

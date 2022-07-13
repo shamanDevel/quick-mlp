@@ -113,9 +113,12 @@ public:
     //Size of the matrix fragments (hardware limitation of the tensor cores)
     //All inner sizes must be multiples of this.
     static constexpr int MATRIX_SIZE = 16;
+    //Warp size (CUDA constant)
+    //Temporary memory is a multiple of that value
+    static constexpr int WARP_SIZE = 32;
 
-    //Maximal shared memory on the hardware I'm using (48kB)
-    static constexpr int MAX_SHARED_MEMORY_BYTES = 48 * 1024;
+    //Maximal shared memory on the hardware I'm using (usually 48kB)
+    static const int MAX_SHARED_MEMORY_BYTES;
 
     /**
      * \brief Constructs the inner network from the Json configuration 'cfg',

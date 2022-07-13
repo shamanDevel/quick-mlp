@@ -16,6 +16,8 @@ static inline __device__
 void printLayer(int layer, int idx, const half* data, int numel)
 {
     int i = 0;
+    printf("{L %d}[T %03d] access memory from 0x%llx to 0x%llx\n",
+        layer, idx, reinterpret_cast<long long>(data), reinterpret_cast<long long>(data + numel));
     while (numel > 0)
     {
         printf("{L %d}[T %03d] (%02d-%02d): %+.4f %+.4f %+.4f %+.4f %+.4f %+.4f %+.4f %+.4f %+.4f %+.4f %+.4f %+.4f %+.4f %+.4f %+.4f %+.4f\n",
@@ -24,6 +26,26 @@ void printLayer(int layer, int idx, const half* data, int numel)
             __half2float(data[i + 4]), __half2float(data[i + 5]), __half2float(data[i + 6]), __half2float(data[i + 7]),
             __half2float(data[i + 8]), __half2float(data[i + 9]), __half2float(data[i + 10]), __half2float(data[i + 11]),
             __half2float(data[i + 12]), __half2float(data[i + 13]), __half2float(data[i + 14]), __half2float(data[i + 15]));
+
+        i += 16;
+        numel -= 16;
+    }
+}
+static inline __device__
+void printLayerBinary(int layer, int idx, const half* data, int numel)
+{
+    const unsigned short* dataS = reinterpret_cast<const unsigned short*>(data);
+    int i = 0;
+    printf("{L %d}[T %03d] access memory from 0x%llx to 0x%llx\n",
+        layer, idx, reinterpret_cast<long long>(data), reinterpret_cast<long long>(data + numel));
+    while (numel > 0)
+    {
+        printf("{L %d}[T %03d] (%02d-%02d): %04hx %04hx %04hx %04hx %04hx %04hx %04hx %04hx %04hx %04hx %04hx %04hx %04hx %04hx %04hx %04hx\n",
+            layer, idx, i, i + 16,
+            (dataS[i + 0]), (dataS[i + 1]), (dataS[i + 2]), (dataS[i + 3]),
+            (dataS[i + 4]), (dataS[i + 5]), (dataS[i + 6]), (dataS[i + 7]),
+            (dataS[i + 8]), (dataS[i + 9]), (dataS[i + 10]), (dataS[i + 11]),
+            (dataS[i + 12]), (dataS[i + 13]), (dataS[i + 14]), (dataS[i + 15]));
 
         i += 16;
         numel -= 16;
@@ -173,6 +195,11 @@ struct Layer
                 adjIntermediateOut[cout + OutChannels * lineID] = adjActivationInput;
             }
         }
+
+        //TEST
+        if constexpr (ComputeWeightGradients)
+            printLayer(0, threadIdx.x, adjIntermediateOut + (OutChannels * lineID), OutChannels);
+
         //load it into fragment b_frag
         for (int cout = 0; cout < OutChannelsDiv16; ++cout)
         {

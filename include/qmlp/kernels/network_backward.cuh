@@ -68,6 +68,13 @@ __global__ void NetworkKernelBackward(
                     adjOutputs[index][cout]);
             }
         }
+        else
+        {
+            for (int cout = 0; cout < CHANNELS_OUT; ++cout)
+                adjIntermediateResultsThread[cout] = hZERO();
+        }
+        __syncwarp();
+        printf("index=%d, valid=%d\n", int(index), valid?1:0);
 
         //call layers
         //e.g. qmlp::kernel::Layer<InChannelsDiv16, OutChannelsDiv16, MAX_CHANNELS, Bias, Activation>
@@ -77,10 +84,11 @@ __global__ void NetworkKernelBackward(
         //TODO: prefetch weights in shared memory?
 
         //CODE GENERATION [[
-$$CALL_NETWORK_LAYERS$$
+        $$CALL_NETWORK_LAYERS$$
         //]] CODE GENERATIION
 
         //adjoint encodings
+        __syncwarp();
         if (valid) {
             auto encodingInput = inputs[index];
             TensorAccessor<float, 1, DefaultPtrTraits, int> adjEncodingInput;

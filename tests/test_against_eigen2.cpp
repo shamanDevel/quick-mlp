@@ -65,7 +65,7 @@ TEMPLATE_TEST_CASE_SIG("test-against-eigen-2", "[eigen]",
     auto root = current.parent_path().parent_path();
     auto configFolder = root / "network_configs";
 
-    int N = 32;
+    int N = 243;
     CUstream stream = nullptr;
 
     //create network
