@@ -106,6 +106,7 @@ set(QUICKMLP_HEADERS
     include/qmlp/activation.h
     include/qmlp/iencoding.h
     include/qmlp/encoding_identity.h
+    include/qmlp/encoding_hashgrid.h
     include/qmlp/fused_network.h
     include/qmlp/qmlp.h
     include/qmlp/errors.h
@@ -120,6 +121,8 @@ set(QUICKMLP_RESOURCES
     include/qmlp/kernels/loops.cuh
     include/qmlp/kernels/tensor.cuh
     include/qmlp/kernels/encoding_identity.cuh
+    include/qmlp/kernels/encoding_hashgrid.cuh
+    include/qmlp/kernels/encoding_hashgrid_config.cuh
     include/qmlp/kernels/layer.cuh
     include/qmlp/kernels/network_forward.cuh
     include/qmlp/kernels/network_backward.cuh
@@ -131,6 +134,7 @@ set(QUICKMLP_SOURCES
     src/activation.cpp
     src/tensor.cpp
     src/encoding_identity.cpp
+    src/encoding_hashgrid.cpp
     src/iencoding.cpp
     src/fused_network.cpp
     )

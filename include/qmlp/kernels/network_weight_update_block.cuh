@@ -30,33 +30,6 @@ namespace activations
     $$DEFINE_ACTIVATIONS$$
 }
 
-#if 0
-template<typename T, int N>
-class StaticArray
-{
-    T data_[N];
-
-public:
-    __device__ StaticArray()
-        : data_{0}
-    {}
-
-};
-
-template<int N>
-class StaticArray<half, N>
-{
-    static constexpr int NDiv2 = N / 2;
-    static_assert(NDiv2 * 2 == N, "N not divisible by 2");
-
-    half2 data_[NDiv2];
-
-public:
-    __device__ StaticArray()
-        : data_{ 0 }
-    {}
-};
-#endif
 
 /**
  * \brief Loader for loading hat{O}_tmp into shared memory and registers.
