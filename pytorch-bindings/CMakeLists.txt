@@ -57,6 +57,8 @@ message(STATUS "Torch: include directories: ${TORCH_INCLUDE_DIR}")
 
 # your configuration
 set(BINDINGS_FILES
+    bind_activation.h
+    bind_activation.cpp
 	bindings.cpp
 	)
 
