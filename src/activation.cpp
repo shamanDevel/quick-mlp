@@ -79,10 +79,10 @@ void Activation::forward(const Tensor& input, Tensor& output, CUstream stream)
     replaceAll(codeTemplate, "$$ACTIVATION_ID$$", id());
 
     int compileFlags = ckl::KernelLoader::CompilationFlags::CompileThrowOnError;
-#ifndef NDEBUG
+//#ifndef NDEBUG
     compileFlags |= ckl::KernelLoader::CompilationFlags::CompileDebugMode
         | ckl::KernelLoader::CompilationFlags::CompileVerboseLogging;
-#endif
+//#endif
     ckl::KernelFunction fun = kl->getKernel(
         "qmlp::kernel::ActivationForwardKernel",
         codeTemplate,
@@ -94,8 +94,8 @@ void Activation::forward(const Tensor& input, Tensor& output, CUstream stream)
         CKL_DIV_UP(numel, fun.bestBlockSize()),
         fun.minGridSize());
     dim3 virtual_size(input.size(0), input.size(1));
-    auto inputAcc = input.accessor<kernel::Tensor2Read<float>>();
-    auto outputAcc = output.accessor<kernel::Tensor2RW<float>>();
+    auto inputAcc = input.accessor<kernel::Tensor2Read<half>>();
+    auto outputAcc = output.accessor<kernel::Tensor2RW<half>>();
     fun.call(
         minGridSize, fun.bestBlockSize(), 0, stream,
         numel, inputAcc, outputAcc);
@@ -138,9 +138,9 @@ void Activation::adjoint(const Tensor& input, const Tensor& adjOutput, Tensor& a
         CKL_DIV_UP(numel, fun.bestBlockSize()),
         fun.minGridSize());
     dim3 virtual_size(input.size(0), input.size(1));
-    auto inputAcc = input.accessor<kernel::Tensor2Read<float>>();
-    auto adjOutputAcc = adjOutput.accessor<kernel::Tensor2Read<float>>();
-    auto adjInputAcc = adjInput.accessor<kernel::Tensor2RW<float>>();
+    auto inputAcc = input.accessor<kernel::Tensor2Read<half>>();
+    auto adjOutputAcc = adjOutput.accessor<kernel::Tensor2Read<half>>();
+    auto adjInputAcc = adjInput.accessor<kernel::Tensor2RW<half>>();
     fun.call(
         minGridSize, fun.bestBlockSize(), 0, stream,
         numel, inputAcc, adjOutputAcc, adjInputAcc);
@@ -195,7 +195,7 @@ ActivationFactory::ActivationFactory(const nlohmann::json& cfg, const std::files
         else if (element.type() == nlohmann::detail::value_t::object)
         {
             //inline specification
-            parseActivation(element);
+            parseActivation(element, true);
         }
         else
         {
@@ -206,12 +206,41 @@ ActivationFactory::ActivationFactory(const nlohmann::json& cfg, const std::files
     }
 }
 
+ActivationFactory::ActivationFactory(ckl::KernelLoader_ptr loader)
+{
+    auto content = loader->findFile("qmlp/builtin-activations.json");
+    if (content.has_value())
+    {
+        auto j = nlohmann::json::parse(content.value());
+        parseFile(j);
+    } else
+    {
+        throw configuration_error("File with builtin activations not found");
+    }
+}
+
 Activation_ptr ActivationFactory::get(const std::string& key) const
 {
     auto it = activations_.find(key);
     if (it == activations_.end())
         throw configuration_error("No activation with id '%s' found!", key.c_str());
     return it->second;
+}
+
+Activation_ptr ActivationFactory::getOrInline(const std::string& key)
+{
+    if (key.empty()) throw std::runtime_error("empty key");
+    if (key[0] == '{')
+    {
+        //inline activation
+        nlohmann::json j = nlohmann::json::parse(key);
+        return parseActivation(j, false);
+    }
+    else
+    {
+        //default activation
+        return get(key);
+    }
 }
 
 void ActivationFactory::parseFile(const std::filesystem::path& file)
@@ -236,16 +265,19 @@ void ActivationFactory::parseFile(const nlohmann::json& j)
     //loop over the array
     for (const auto& element : j)
     {
-        parseActivation(element);
+        parseActivation(element, true);
     }
 }
 
-void ActivationFactory::parseActivation(const nlohmann::json& cfg)
+Activation_ptr ActivationFactory::parseActivation(const nlohmann::json& cfg, bool emplace)
 {
     try
     {
         Activation_ptr a = std::make_shared<Activation>(cfg);
-        activations_.emplace(a->id(), a );
+        if (emplace) {
+            activations_.emplace(a->id(), a);
+        }
+        return a;
     } catch (const std::exception& ex)
     {
         std::throw_with_nested(configuration_error("Parsing the activation configuration failed."));

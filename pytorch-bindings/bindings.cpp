@@ -1,13 +1,12 @@
 #include <torch/extension.h>
 #include <torch/types.h>
-#include <pybind11/pybind11.h>
-#include <pybind11/numpy.h>
-#include <pybind11/stl.h>
-#include <pybind11/operators.h>
+#include <torch/script.h>
+#include <c10/cuda/CUDAStream.h>
 
 #include <unordered_map>
 
 #include <qmlp/activation.h>
+#include <qmlp/qmlp.h>
 
 #ifdef WIN32
 #ifndef NOMINMAX
@@ -21,6 +20,9 @@ namespace py = pybind11;
 
 static QUICKMLP_NAMESPACE::Tensor wrap(const torch::Tensor& t)
 {
+    if (!t.is_cuda())
+        throw std::runtime_error("Tensor must reside on CUDA");
+
     qmlp::Tensor::Precision p;
     if (t.dtype() == c10::kFloat)
         p = qmlp::Tensor::FLOAT;
@@ -29,36 +31,83 @@ static QUICKMLP_NAMESPACE::Tensor wrap(const torch::Tensor& t)
     else
         throw std::runtime_error("Unsupported datatype, only float and half tensors supported");
 
+    std::vector<int32_t> sizes(t.sizes().begin(), t.sizes().end());
+    std::vector<int32_t> strides(t.strides().begin(), t.strides().end());
+
+    return QUICKMLP_NAMESPACE::Tensor( t.data_ptr(), p, sizes, strides );
 }
 
-struct ActivationBindings
+struct ActivationCache
 {
-    typedef std::unordered_map<std::string, QUICKMLP_NAMESPACE::Activation_ptr> ActivationCache_t;
-    static ActivationCache_t cache;
-
-    static void clear_cache()
+    static QUICKMLP_NAMESPACE::Activation_ptr create(const std::string& cfg)
     {
-        cache.clear();
-    }
+        typedef std::unordered_map<std::string, QUICKMLP_NAMESPACE::Activation_ptr> Cache_t;
+        static Cache_t cache;
 
-    static int64_t dummy(int64_t v)
-    {
-        return v + 1;
-    }
+        auto it = cache.find(cfg);
+        if (it != cache.end()) return it->second;
 
-    //static std::string get_activation(const std::string& cfg)
-    //{
-    //    
-    //}
+        static QUICKMLP_NAMESPACE::ActivationFactory factory(QUICKMLP_NAMESPACE::QuickMLP::Instance().kernelLoader());
+        auto a = factory.getOrInline(cfg);
+        cache.emplace(cfg, a);
+        return a;
+    }
 };
-ActivationBindings::ActivationCache_t ActivationBindings::cache;
 
-static void TORCH_LIBRARY_init_qmlp(torch::Library&);
-static const torch::detail::TorchLibraryInit TORCH_LIBRARY_static_init_qmlp(
-    torch::Library::DEF, &TORCH_LIBRARY_init_qmlp, "qmlp", c10::nullopt, __FILE__, __LINE__);
-
-void TORCH_LIBRARY_init_qmlp(torch::Library& m)
+class ActivationBindings : public torch::CustomClassHolder
 {
-    m.def("activation_clear_cache", ActivationBindings::clear_cache);
-    m.def("dummy", ActivationBindings::dummy);
+    std::string cfg_;
+    QUICKMLP_NAMESPACE::Activation_ptr a_;
+
+public:
+    ActivationBindings(const std::string& cfg)
+        : cfg_(cfg), a_(ActivationCache::create(cfg))
+    {}
+
+    [[nodiscard]] std::string cfg() const
+    {
+        return cfg_;
+    }
+
+    torch::Tensor forward(const torch::Tensor& input)
+    {
+        torch::Tensor output = torch::empty_like(input);
+
+        auto inputWrapped = wrap(input);
+        auto outputWrapped = wrap(output);
+        CUstream stream = c10::cuda::getCurrentCUDAStream();
+        a_->forward(inputWrapped, outputWrapped, stream);
+
+        return output;
+    }
+
+    torch::Tensor adjoint(const torch::Tensor& input, const torch::Tensor& adjOutput)
+    {
+        torch::Tensor adjInput = torch::empty_like(input);
+
+        auto inputWrapped = wrap(input);
+        auto adjOutputWrapped = wrap(adjOutput);
+        auto adjInputWrapped = wrap(adjInput);
+        CUstream stream = c10::cuda::getCurrentCUDAStream();
+        a_->adjoint(inputWrapped, adjOutputWrapped, adjInputWrapped, stream);
+
+        return adjInput;
+    }
+};
+
+
+TORCH_LIBRARY(qmlp, m)
+{
+    m.class_<ActivationBindings>("Activation")
+        .def(torch::init<std::string>())
+        .def("forward", &ActivationBindings::forward)
+        .def("adjoint", &ActivationBindings::adjoint)
+        .def_pickle(
+            [](const c10::intrusive_ptr<ActivationBindings>& self) -> std::string {
+                return self->cfg();
+            },
+            [](std::string state) -> c10::intrusive_ptr<ActivationBindings> {
+                return c10::make_intrusive<ActivationBindings>(std::move(state));
+            });
+        ;
 }

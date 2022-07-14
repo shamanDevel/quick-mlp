@@ -31,7 +31,7 @@ __global__ void ActivationForwardKernel(
     Tensor2RW<half> outputs //shape (numel, C)
     )
 {
-    typedef $$ACTIVATION_ID$$ Activation_t;
+    typedef activations::$$ACTIVATION_ID$$ Activation_t;
 
     KERNEL_2D_LOOP(i, j, virtual_size)
     {
@@ -49,7 +49,7 @@ __global__ void ActivationAdjointKernel(
     Tensor2RW<half> adjInputs //shape (numel, C)
 )
 {
-    typedef $$ACTIVATION_ID$$ Activation_t;
+    typedef activations::$$ACTIVATION_ID$$ Activation_t;
 
     KERNEL_2D_LOOP(i, j, virtual_size)
     {

@@ -43,7 +43,7 @@ _libraries = [
 
 _common_args = [
     '/std:c++17' if os.name=='nt' else '-std=c++17',
-    '-DNVCC_INCLUDE_DIR=%s'%_join_cuda_home('include'),
+    '-DCKL_NVCC_INCLUDE_DIR=%s'%_join_cuda_home('include'),
 ]
 
 setup(

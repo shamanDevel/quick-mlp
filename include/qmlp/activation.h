@@ -117,15 +117,28 @@ public:
         const std::filesystem::path& parent, ckl::KernelLoader_ptr loader);
 
     /**
+     * Loads the default activations only
+     */
+    ActivationFactory(ckl::KernelLoader_ptr loader);
+
+    /**
      * Returns the activation with the given identifier.
      * Throws an exception if no such key was found
      */
     [[nodiscard]] Activation_ptr get(const std::string& key) const;
 
+    /**
+     * Returns the activation with the given identifier.
+     * If the key starts with '{', it is interpreted as an inline activation
+     * definition with the tags 'id', 'forward' and 'adjoint'.
+     * Throws an exception if no such key was found and it is not an inline activation
+     */
+    [[nodiscard]] Activation_ptr getOrInline(const std::string& key);
+
 private:
     void parseFile(const std::filesystem::path& file);
     void parseFile(const nlohmann::json& j);
-    void parseActivation(const nlohmann::json& cfg);
+    Activation_ptr parseActivation(const nlohmann::json& cfg, bool emplace);
 
     std::unordered_map<std::string, Activation_ptr> activations_;
 };
