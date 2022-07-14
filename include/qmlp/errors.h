@@ -2,6 +2,7 @@
 
 #include "common.h"
 #include <ckl/errors.h>
+#include <sstream>
 
 QUICKMLP_NAMESPACE_BEGIN
 

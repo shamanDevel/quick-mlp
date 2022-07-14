@@ -113,4 +113,40 @@ void EncodingHashGrid::fillCode(std::stringstream& code) const
     throw std::logic_error("Not implemented");
 }
 
+bool EncodingHashGrid::hasParameters() const
+{
+    return IEncoding::hasParameters();
+}
+
+std::string EncodingHashGrid::parameterName() const
+{
+    return IEncoding::parameterName();
+}
+
+Tensor::Precision EncodingHashGrid::parameterPrecision(Tensor::Usage usage) const
+{
+    return IEncoding::parameterPrecision(usage);
+}
+
+size_t EncodingHashGrid::parameterCount() const
+{
+    return IEncoding::parameterCount();
+}
+
+void EncodingHashGrid::setParameter(const Tensor& tensor, Tensor::Usage usage)
+{
+    IEncoding::setParameter(tensor, usage);
+}
+
+void EncodingHashGrid::fillParameterConstant(const std::string& constantName, const ckl::KernelFunction& function,
+    CUstream stream)
+{
+    IEncoding::fillParameterConstant(constantName, function, stream);
+}
+
+void EncodingHashGrid::zeroGradients()
+{
+    IEncoding::zeroGradients();
+}
+
 QUICKMLP_NAMESPACE_END

@@ -22,11 +22,10 @@ enum class LayerCombinationMode
 };
 struct HashGridLayerConfig
 {
-    int memoryOffset;
-    //DenseGrid (hashed=false) -> per-side resolution of the grid
-    //HashGrid (hashed=true) -> number of elements in this grid
-    int resolutionOrSize;
-    bool hashed;
+    int memoryOffset; //offset in floats from the start of the float array)
+    int resolution; //the per-side resolution of this layer
+    int hashGridSize; //the number of entries if hashed
+    bool hashed; //true iff hashed
 };
 template<int NumDimensions, int NumLayers>
 struct HashGridConfig

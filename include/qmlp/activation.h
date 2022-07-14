@@ -6,24 +6,25 @@
 #include <nlohmann/json.hpp>
 
 #include "ckl/kernel_loader.h"
+#include "tensor.h"
 
 QUICKMLP_NAMESPACE_BEGIN
-    /**
-     * Defines an activation function.
-     * An activation function defines two functions, acting point-wise:
-     *
-     * Forward function (inference):
-     *  - Input: <code>half x</code>
-     *  - Output: <code>half z</code>
-     *  - Example for ReLU:
-     *    <code> z = __hmax(x, 0)</code>
-     *
-     * Adjoint function (for training)
-     *  - Input: <code>half x, adjz</code> the input for the forward function and the adjoint of the output
-     *  - Output: <code>half adjx</code> the adjoint of the input.
-     *  - Example for ReLU:
-     *    <code> adjx = x>0 ? adjx : 0</code>
-     */
+/**
+ * Defines an activation function.
+ * An activation function defines two functions, acting point-wise:
+ *
+ * Forward function (inference):
+ *  - Input: <code>half x</code>
+ *  - Output: <code>half z</code>
+ *  - Example for ReLU:
+ *    <code> z = __hmax(x, 0)</code>
+ *
+ * Adjoint function (for training)
+ *  - Input: <code>half x, adjz</code> the input for the forward function and the adjoint of the output
+ *  - Output: <code>half adjx</code> the adjoint of the input.
+ *  - Example for ReLU:
+ *    <code> adjx = x>0 ? adjx : 0</code>
+ */
 class Activation
 {
     const std::string id_;
@@ -67,6 +68,27 @@ public:
     {
         return code_;
     }
+
+    /**
+     * \brief Inference / forward pass through the activation function.
+     * The tensors must be of half precision
+     *
+     * \param input the input of shape (B, C)
+     * \param output the output of shape (B, C)
+     * \param stream the CUDA stream where the kernel is enqueued.
+     */
+    void forward(const Tensor& input, Tensor& output, CUstream stream);
+
+    /**
+     * \brief Adjoint propagation through the activation function.
+     * The tensors must be of half precision.
+     
+     * \param input the inputs of shape (B, C)
+     * \param adjOutput the adjoint output of shape (B, C)
+     * \param adjInput the adjoint input of shape (B, C)
+     * \param stream the CUDA stream where the kernel is enqueued.
+     */
+    void adjoint(const Tensor& input, const Tensor& adjOutput, Tensor& adjInput, CUstream stream);
 };
 typedef std::shared_ptr<Activation> Activation_ptr;
 
@@ -98,7 +120,7 @@ public:
      * Returns the activation with the given identifier.
      * Throws an exception if no such key was found
      */
-    Activation_ptr get(const std::string& key) const;
+    [[nodiscard]] Activation_ptr get(const std::string& key) const;
 
 private:
     void parseFile(const std::filesystem::path& file);

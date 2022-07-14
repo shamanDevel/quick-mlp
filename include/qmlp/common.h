@@ -17,6 +17,8 @@
 #define QUICKMLP_NAMESPACE_BEGIN namespace qmlp {
 #define QUICKMLP_NAMESPACE_END }
 
+#include <string>
+
 QUICKMLP_NAMESPACE_BEGIN
     class NonAssignable {
     //https://stackoverflow.com/a/22495199
@@ -34,6 +36,19 @@ T roundUp(T numToRound, T multiple)
 {
     //source: https://stackoverflow.com/a/9194117/1786598
     return ((numToRound + multiple - 1) / multiple) * multiple;
+}
+
+static inline void replaceAll(std::string& s, const std::string& search, const std::string& replace) {
+    for (size_t pos = 0; ; pos += replace.length()) {
+        // Locate the substring to replace
+        pos = s.find(search, pos);
+        if (pos == std::string::npos) break;
+        // Replace by erasing and inserting
+        //TODO: might be more efficient by overwriting the character positions that are shared
+        // and only erasing/inserting the difference
+        s.erase(pos, search.length());
+        s.insert(pos, replace);
+    }
 }
 
 QUICKMLP_NAMESPACE_END

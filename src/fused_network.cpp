@@ -3,6 +3,7 @@
 #include <tinyformat.h>
 #include <qmlp/qmlp.h>
 #include <unordered_set>
+#include <cmath>
 #include <qmlp/kernels/tensor.cuh>
 
 QUICKMLP_NAMESPACE_BEGIN
@@ -243,7 +244,7 @@ void FusedNetwork::initializeInferenceParameters(std::default_random_engine& rng
     {
         const auto& l = layers_[layer];
         //kaiman uniform
-        float bound = 1.0f / std::sqrtf(l.channelsIn);
+        float bound = 1.0f / std::sqrt(l.channelsIn);
         std::uniform_real_distribution<float> distr1(-bound, +bound);
         //weights
         Tensor weights = networkParameter(layer, false, dataHost.data(), Tensor::HALF);
@@ -295,19 +296,6 @@ Tensor FusedNetwork::networkParameter(int layer, bool bias, Tensor::Usage usage)
 {
     auto& p = usage == Tensor::INFERENCE ? parametersInference_ : parametersGradients_;
     return networkParameter(layer, bias, p.rawPtr(), p.precision());
-}
-
-static void replaceAll(std::string& s, const std::string& search, const std::string& replace) {
-    for (size_t pos = 0; ; pos += replace.length()) {
-        // Locate the substring to replace
-        pos = s.find(search, pos);
-        if (pos == std::string::npos) break;
-        // Replace by erasing and inserting
-        //TODO: might be more efficient by overwriting the character positions that are shared
-        // and only erasing/inserting the difference
-        s.erase(pos, search.length());
-        s.insert(pos, replace);
-    }
 }
 
 std::string FusedNetwork::constantNameForEncoding(IEncoding_ptr e, int encodingIdx)

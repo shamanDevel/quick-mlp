@@ -89,6 +89,7 @@ endif()
 # Options
 option(QUICKMLP_TEST "Build qmlp test suite?" ${QUICKMLP_MASTER_PROJECT})
 option(QUICKMLP_SHARED "Build qmlp as a shared library?" OFF)
+option(QUICKMLP_PYTORCH_BINDINGS "Build PyTorch bindings?" OFF)
 
 # CUDA
 find_package(CUDA REQUIRED)
@@ -127,6 +128,7 @@ set(QUICKMLP_RESOURCES
     include/qmlp/kernels/network_forward.cuh
     include/qmlp/kernels/network_backward.cuh
     include/qmlp/kernels/network_weight_update_block.cuh
+    include/qmlp/kernels/activation_kernels.cuh
 )
 
 set(QUICKMLP_SOURCES
@@ -244,6 +246,11 @@ else()
   if(QUICKMLP_TEST)
     add_subdirectory(tests)
   endif()
+endif()
+
+# BUILD PYTORCH BINDINGS
+if (QUICKMLP_PYTORCH_BINDINGS)
+    add_subdirectory(pytorch-bindings)
 endif()
 
 # Better symmetry with find_package(qmlp CONFIG) mode.

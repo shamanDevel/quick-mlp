@@ -47,6 +47,14 @@ __forceinline__ __host__ __device__ T roundUpPower2(T numToRound, int multiple)
 		 ptrdiff_t i = __i - virtual_size.x * (j + virtual_size.y * k);
 #define KERNEL_3D_LOOP_END }
 
+#define KERNEL_2D_LOOP(i, j, virtual_size)							\
+	for (ptrdiff_t __i = blockIdx.x * blockDim.x + threadIdx.x;	\
+		 __i < virtual_size.x*virtual_size.y;								\
+		 __i += blockDim.x * gridDim.x) {									\
+		 ptrdiff_t j = __i / virtual_size.x;					\
+		 ptrdiff_t i = __i - j * virtual_size.x;
+#define KERNEL_2D_LOOP_END }
+
 #define KERNEL_1D_LOOP(i, numel)								\
 	for (ptrdiff_t i = blockIdx.x * blockDim.x + threadIdx.x;	\
 		 i < numel;												\

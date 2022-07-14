@@ -3,11 +3,14 @@
 #include <ckl/errors.h>
 #include <regex>
 #include <fstream>
+#include <iostream>
 #include <qmlp/errors.h>
 
-QUICKMLP_NAMESPACE_BEGIN
+#include "qmlp/qmlp.h"
+#include "qmlp/kernels/tensor.cuh"
 
-static std::string generateCode(const std::string& id, const std::string& forward, const std::string& adjoint)
+QUICKMLP_NAMESPACE_BEGIN
+    static std::string generateCode(const std::string& id, const std::string& forward, const std::string& adjoint)
 {
     static const char* TEMPLATE = R"code(
 struct %s
@@ -58,8 +61,93 @@ nlohmann::json Activation::toJson() const
     };
 }
 
+void Activation::forward(const Tensor& input, Tensor& output, CUstream stream)
+{
+    //Check shapes
+    CHECK_DIM(input, 2);
+    CHECK_DIM(output, 2);
+    CHECK_DTYPE(input, Tensor::HALF);
+    CHECK_DTYPE(output, Tensor::HALF);
+    CHECK_SIZE(output, 0, input.size(0));
+    CHECK_SIZE(output, 1, input.size(1));
+    int numel = input.size(0) * input.size(1);
+
+    //generate code
+    auto kl = QuickMLP::Instance().kernelLoader();
+    std::string codeTemplate = kl->findFile("qmlp/kernels/activation_kernels.cuh").value();
+    replaceAll(codeTemplate, "$$DEFINE_ACTIVATIONS$$", code());
+    replaceAll(codeTemplate, "$$ACTIVATION_ID$$", id());
+
+    int compileFlags = ckl::KernelLoader::CompilationFlags::CompileThrowOnError;
+#ifndef NDEBUG
+    compileFlags |= ckl::KernelLoader::CompilationFlags::CompileDebugMode
+        | ckl::KernelLoader::CompilationFlags::CompileVerboseLogging;
+#endif
+    ckl::KernelFunction fun = kl->getKernel(
+        "qmlp::kernel::ActivationForwardKernel",
+        codeTemplate,
+        {},
+        compileFlags).value();
+
+    //launch kernel
+    int minGridSize = std::min(
+        CKL_DIV_UP(numel, fun.bestBlockSize()),
+        fun.minGridSize());
+    dim3 virtual_size(input.size(0), input.size(1));
+    auto inputAcc = input.accessor<kernel::Tensor2Read<float>>();
+    auto outputAcc = output.accessor<kernel::Tensor2RW<float>>();
+    fun.call(
+        minGridSize, fun.bestBlockSize(), 0, stream,
+        numel, inputAcc, outputAcc);
+}
+
+void Activation::adjoint(const Tensor& input, const Tensor& adjOutput, Tensor& adjInput, CUstream stream)
+{
+    //Check shapes
+    CHECK_DIM(input, 2);
+    CHECK_DIM(adjOutput, 2);
+    CHECK_DIM(adjInput, 2);
+    CHECK_DTYPE(input, Tensor::HALF);
+    CHECK_DTYPE(adjOutput, Tensor::HALF);
+    CHECK_DTYPE(adjInput, Tensor::HALF);
+    CHECK_SIZE(adjOutput, 0, input.size(0));
+    CHECK_SIZE(adjOutput, 1, input.size(1));
+    CHECK_SIZE(adjInput, 0, input.size(0));
+    CHECK_SIZE(adjInput, 1, input.size(1));
+    int numel = input.size(0) * input.size(1);
+
+    //generate code
+    auto kl = QuickMLP::Instance().kernelLoader();
+    std::string codeTemplate = kl->findFile("qmlp/kernels/activation_kernels.cuh").value();
+    replaceAll(codeTemplate, "$$DEFINE_ACTIVATIONS$$", code());
+    replaceAll(codeTemplate, "$$ACTIVATION_ID$$", id());
+
+    int compileFlags = ckl::KernelLoader::CompilationFlags::CompileThrowOnError;
+#ifndef NDEBUG
+    compileFlags |= ckl::KernelLoader::CompilationFlags::CompileDebugMode
+        | ckl::KernelLoader::CompilationFlags::CompileVerboseLogging;
+#endif
+    ckl::KernelFunction fun = kl->getKernel(
+        "qmlp::kernel::ActivationAdjointKernel",
+        codeTemplate,
+        {},
+        compileFlags).value();
+
+    //launch kernel
+    int minGridSize = std::min(
+        CKL_DIV_UP(numel, fun.bestBlockSize()),
+        fun.minGridSize());
+    dim3 virtual_size(input.size(0), input.size(1));
+    auto inputAcc = input.accessor<kernel::Tensor2Read<float>>();
+    auto adjOutputAcc = adjOutput.accessor<kernel::Tensor2Read<float>>();
+    auto adjInputAcc = adjInput.accessor<kernel::Tensor2RW<float>>();
+    fun.call(
+        minGridSize, fun.bestBlockSize(), 0, stream,
+        numel, inputAcc, adjOutputAcc, adjInputAcc);
+}
+
 ActivationFactory::ActivationFactory(const nlohmann::json& cfg, const std::filesystem::path& parent,
-    ckl::KernelLoader_ptr loader)
+                                     ckl::KernelLoader_ptr loader)
 {
     if (!cfg.is_array())
     {
