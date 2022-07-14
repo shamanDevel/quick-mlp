@@ -13,10 +13,10 @@ class _ActivationFunction(torch.autograd.Function):
     
     @staticmethod
     def backward(ctx, grad_output):
-        input = ctx.saved_tensors
+        input, = ctx.saved_tensors
         activation = ctx.activation
         
-        return activation.adjoint(input, grad_output)
+        return activation.adjoint(input, grad_output), None
         
 class FusedActivation(torch.nn.Module):
     
@@ -28,6 +28,10 @@ class FusedActivation(torch.nn.Module):
     def forward(self, input: torch.Tensor) -> torch.Tensor:
         return _ActivationFunction.apply(input, self._activation)
         
+    def __repr__(self):
+        return f"FusedActivation(\"{self._cfg}\")"
+    def __str__(self):
+        return f"FusedActivation(\"{self._cfg}\")"
 
 if __name__ == '__main__':
     
