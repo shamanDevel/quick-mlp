@@ -317,7 +317,7 @@ void FusedNetwork::fillEncodingsAndActivations(std::string& codeTemplate,
         if (e->hasParameters())
         {
             std::string constantName = constantNameForEncoding(e, encodingIdx);
-            encodingConstants << "__constant__ " << e->parameterName() << constantName << "\n";
+            encodingConstants << "__constant__ " << e->parameterName() << " " << constantName << "\n";
             encodingConstantNames.push_back(constantName);
         }
     }

@@ -100,6 +100,7 @@ add_subdirectory(third-party/cuda-kernel-loader)
 add_subdirectory(third-party/json)
 set(CUTLASS_ENABLE_HEADERS_ONLY ON CACHE BOOL "Enable only the header library")
 add_subdirectory(third-party/cutlass)
+add_subdirectory(third-party/magic_enum)
 
 # Files
 set(QUICKMLP_HEADERS
@@ -129,6 +130,7 @@ set(QUICKMLP_RESOURCES
     include/qmlp/kernels/network_backward.cuh
     include/qmlp/kernels/network_weight_update_block.cuh
     include/qmlp/kernels/activation_kernels.cuh
+    include/qmlp/kernels/encoding_kernels.cuh
 )
 
 set(QUICKMLP_SOURCES
@@ -231,7 +233,7 @@ if(NOT TARGET qmlp)
     PUBLIC
         CUDA::cudart ckl::ckl nlohmann_json::nlohmann_json
     PRIVATE
-        nvidia::cutlass::cutlass)
+        nvidia::cutlass::cutlass magic_enum::magic_enum)
   
 else()
   # It is invalid to install a target twice, too.

@@ -6,6 +6,7 @@
 #include <sstream>
 #include <unordered_map>
 #include <functional>
+#include <optional>
 #include <ckl/kernel_loader.h>
 #include <nlohmann/json.hpp>
 
@@ -101,6 +102,32 @@ public:
      */
     virtual void zeroGradients() {}
 
+
+    /**
+    * \brief Inference / forward pass through the activation function.
+    *
+    * \param input the input of shape (B, C), dtype=float32
+    * \param output the output of shape (B, C), dtype=half16
+    * \param stream the CUDA stream where the kernel is enqueued.
+    */
+    virtual void forward(const Tensor& input, Tensor& output, CUstream stream,
+        const std::optional<const Tensor>& parametersForward);
+
+    /**
+     * \brief Adjoint propagation through the activation function.
+     * The tensors must be of half precision.
+
+     * \param input the inputs of shape (B, C), dtype=float32
+     * \param adjOutput the adjoint output of shape (B, C), dtype=half16
+     * \param adjInput the adjoint input of shape (B, C), dtype=half16
+     * \param stream the CUDA stream where the kernel is enqueued.
+     */
+    virtual void adjoint(const Tensor& input, const Tensor& adjOutput, Tensor& adjInput, CUstream stream,
+        const std::optional<const Tensor>& parametersForward, const std::optional<const Tensor>& parametersGradients);
+
+private:
+    std::optional<ckl::KernelFunction> forwardKernel_;
+    std::optional<ckl::KernelFunction> adjointKernel_;
 };
 typedef std::shared_ptr<IEncoding> IEncoding_ptr;
 

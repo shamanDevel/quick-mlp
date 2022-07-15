@@ -34,8 +34,10 @@ private:
     const LayerCombinationMode combinationMode_;
     const std::vector<float> boundingBoxMin_; //min point of the bounding box
     const std::vector<float> boundingBoxSize_;
+    const std::vector<float> boundingBoxInvSize_;
 
     int numParameters_;
+    std::vector<QUICKMLP_KERNEL_NAMESPACE::HashGridLayerConfig> layers_;
     Tensor parametersForward_;
     Tensor parametersGradients_;
 

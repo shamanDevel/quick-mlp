@@ -2,6 +2,7 @@
 
 #include "common.h"
 #include <string>
+#include <optional>
 #include <unordered_map>
 #include <nlohmann/json.hpp>
 
@@ -89,6 +90,10 @@ public:
      * \param stream the CUDA stream where the kernel is enqueued.
      */
     void adjoint(const Tensor& input, const Tensor& adjOutput, Tensor& adjInput, CUstream stream);
+
+private:
+    std::optional<ckl::KernelFunction> forwardKernel_;
+    std::optional<ckl::KernelFunction> adjointKernel_;
 };
 typedef std::shared_ptr<Activation> Activation_ptr;
 

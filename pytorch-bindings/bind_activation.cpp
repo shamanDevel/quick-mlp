@@ -81,7 +81,7 @@ void bindActivation(torch::Library& m)
 {
     m.class_<ActivationBindings>("Activation")
         .def(torch::init<std::string>())
-        .def("inference", &ActivationBindings::forward)
+        .def("inference", &ActivationBindings::inference)
         .def("adjoint", &ActivationBindings::adjoint)
         .def("forward", [](const ActivationBindings_ptr& self, const torch::Tensor& input)
         {

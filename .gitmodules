@@ -7,3 +7,6 @@
 [submodule "third-party/cutlass"]
 	path = third-party/cutlass
 	url = https://github.com/NVIDIA/cutlass.git
+[submodule "third-party/magic_enum"]
+	path = third-party/magic_enum
+	url = https://github.com/Neargye/magic_enum.git

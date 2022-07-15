@@ -51,4 +51,24 @@ static inline void replaceAll(std::string& s, const std::string& search, const s
     }
 }
 
+
+/**
+ * \brief Integer power function, computes x**p = pow(x,p) with integer math.
+ * \tparam T the type of the result
+ * \param x the base
+ * \param p the exponent
+ * \return the result of x**p
+ */
+template<typename T>
+T ipow(T x, unsigned int p)
+{
+    //source: https://stackoverflow.com/a/1505791/1786598
+
+    if (p == 0) return 1;
+    if (p == 1) return x;
+
+    T tmp = ipow<T>(x, p / 2);
+    if (p % 2 == 0) return tmp * tmp;
+    else return x * tmp * tmp;
+}
 QUICKMLP_NAMESPACE_END

@@ -13,7 +13,7 @@ QUICKMLP_KERNEL_NAMESPACE_BEGIN
 #ifdef __CUDACC__
 constexpr
 #endif
-__host__ __device__ half hZERO()
+__host__ __device__ inline half hZERO()
 {
     return __half_raw{ 0 };
 }
@@ -21,7 +21,7 @@ __host__ __device__ half hZERO()
 #ifdef __CUDACC__
 constexpr
 #endif
-__host__ __device__ half2 h2ZERO()
+__host__ __device__ inline half2 h2ZERO()
 {
     return __half2_raw{ 0, 0 };
 }

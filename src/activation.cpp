@@ -72,22 +72,27 @@ void Activation::forward(const Tensor& input, Tensor& output, CUstream stream)
     CHECK_SIZE(output, 1, input.size(1));
     int numel = input.size(0) * input.size(1);
 
-    //generate code
-    auto kl = QuickMLP::Instance().kernelLoader();
-    std::string codeTemplate = kl->findFile("qmlp/kernels/activation_kernels.cuh").value();
-    replaceAll(codeTemplate, "$$DEFINE_ACTIVATIONS$$", code());
-    replaceAll(codeTemplate, "$$ACTIVATION_ID$$", id());
+    if (!forwardKernel_.has_value()) {
+        //generate code
+        auto kl = QuickMLP::Instance().kernelLoader();
+        std::string codeTemplate = kl->findFile("qmlp/kernels/activation_kernels.cuh").value();
+        replaceAll(codeTemplate, "$$DEFINE_ACTIVATIONS$$", code());
+        replaceAll(codeTemplate, "$$ACTIVATION_ID$$", id());
 
-    int compileFlags = ckl::KernelLoader::CompilationFlags::CompileThrowOnError;
-//#ifndef NDEBUG
-    compileFlags |= ckl::KernelLoader::CompilationFlags::CompileDebugMode
-        | ckl::KernelLoader::CompilationFlags::CompileVerboseLogging;
-//#endif
-    ckl::KernelFunction fun = kl->getKernel(
-        "qmlp::kernel::ActivationForwardKernel",
-        codeTemplate,
-        {},
-        compileFlags).value();
+        int compileFlags = ckl::KernelLoader::CompilationFlags::CompileThrowOnError;
+#ifndef NDEBUG
+        compileFlags |= ckl::KernelLoader::CompilationFlags::CompileDebugMode
+            | ckl::KernelLoader::CompilationFlags::CompileVerboseLogging;
+#endif
+        ckl::KernelFunction fun = kl->getKernel(
+            "qmlp::kernel::ActivationForwardKernel",
+            codeTemplate,
+            {},
+            compileFlags).value();
+
+        forwardKernel_ = fun;
+    }
+    auto& fun = forwardKernel_.value();
 
     //launch kernel
     int minGridSize = std::min(
@@ -98,7 +103,7 @@ void Activation::forward(const Tensor& input, Tensor& output, CUstream stream)
     auto outputAcc = output.accessor<kernel::Tensor2RW<half>>();
     fun.call(
         minGridSize, fun.bestBlockSize(), 0, stream,
-        numel, inputAcc, outputAcc);
+        virtual_size, inputAcc, outputAcc);
 }
 
 void Activation::adjoint(const Tensor& input, const Tensor& adjOutput, Tensor& adjInput, CUstream stream)
@@ -116,22 +121,28 @@ void Activation::adjoint(const Tensor& input, const Tensor& adjOutput, Tensor& a
     CHECK_SIZE(adjInput, 1, input.size(1));
     int numel = input.size(0) * input.size(1);
 
-    //generate code
-    auto kl = QuickMLP::Instance().kernelLoader();
-    std::string codeTemplate = kl->findFile("qmlp/kernels/activation_kernels.cuh").value();
-    replaceAll(codeTemplate, "$$DEFINE_ACTIVATIONS$$", code());
-    replaceAll(codeTemplate, "$$ACTIVATION_ID$$", id());
+    if (!adjointKernel_.has_value())
+    {
+        //generate code
+        auto kl = QuickMLP::Instance().kernelLoader();
+        std::string codeTemplate = kl->findFile("qmlp/kernels/activation_kernels.cuh").value();
+        replaceAll(codeTemplate, "$$DEFINE_ACTIVATIONS$$", code());
+        replaceAll(codeTemplate, "$$ACTIVATION_ID$$", id());
 
-    int compileFlags = ckl::KernelLoader::CompilationFlags::CompileThrowOnError;
+        int compileFlags = ckl::KernelLoader::CompilationFlags::CompileThrowOnError;
 #ifndef NDEBUG
-    compileFlags |= ckl::KernelLoader::CompilationFlags::CompileDebugMode
-        | ckl::KernelLoader::CompilationFlags::CompileVerboseLogging;
+        compileFlags |= ckl::KernelLoader::CompilationFlags::CompileDebugMode
+            | ckl::KernelLoader::CompilationFlags::CompileVerboseLogging;
 #endif
-    ckl::KernelFunction fun = kl->getKernel(
-        "qmlp::kernel::ActivationAdjointKernel",
-        codeTemplate,
-        {},
-        compileFlags).value();
+        ckl::KernelFunction fun = kl->getKernel(
+            "qmlp::kernel::ActivationAdjointKernel",
+            codeTemplate,
+            {},
+            compileFlags).value();
+
+        adjointKernel_ = fun;
+    }
+    auto& fun = adjointKernel_.value();
 
     //launch kernel
     int minGridSize = std::min(
@@ -143,7 +154,7 @@ void Activation::adjoint(const Tensor& input, const Tensor& adjOutput, Tensor& a
     auto adjInputAcc = adjInput.accessor<kernel::Tensor2RW<half>>();
     fun.call(
         minGridSize, fun.bestBlockSize(), 0, stream,
-        numel, inputAcc, adjOutputAcc, adjInputAcc);
+        virtual_size, inputAcc, adjOutputAcc, adjInputAcc);
 }
 
 ActivationFactory::ActivationFactory(const nlohmann::json& cfg, const std::filesystem::path& parent,
