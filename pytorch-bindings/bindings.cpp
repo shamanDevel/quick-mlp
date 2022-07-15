@@ -11,6 +11,7 @@
 #include <qmlp/qmlp.h>
 
 #include "bind_activation.h"
+#include "bind_encoding.h"
 
 QUICKMLP_NAMESPACE::Tensor wrap(const torch::Tensor& t)
 {
@@ -34,4 +35,5 @@ QUICKMLP_NAMESPACE::Tensor wrap(const torch::Tensor& t)
 TORCH_LIBRARY(qmlp, m)
 {
     bindActivation(m);
+    bindEncoding(m);
 }

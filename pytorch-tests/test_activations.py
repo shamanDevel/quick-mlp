@@ -1,6 +1,8 @@
+import os
 import torch
+import torch.nn.functional
 import torch.autograd
-torch.classes.load_library("../bin/qmlp.so")
+torch.classes.load_library(os.path.join(os.path.split(__file__)[0], "../bin/qmlp.so"))
 print(torch.classes.loaded_libraries)
 
 class FusedActivation(torch.nn.Module):
@@ -37,8 +39,9 @@ def _validate_activation(code:str, baseline: torch.nn.Module):
     print("Input:"); print(input)
     print("Output:"); print(output_actual)
     assert torch.allclose(output_actual, output_expected)
-    
-    loss = torch.sum(output_actual)
+
+    output_random = torch.randn_like(output_actual)
+    loss = torch.nn.functional.mse_loss(output_actual, output_random)
     loss.backward()
     print("Gradient:")
     print(input.grad)

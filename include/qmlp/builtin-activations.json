@@ -1,7 +1,7 @@
 [
     {
         "id": "relu",
-        "forward": "z = __float2half(fmaxf(__half2float(x), 0.f))",
+        "forward": "z = __hgt(x, hZERO()) ? x : hZERO()",
         "adjoint": "adjx = __hgt(x, hZERO()) ? adjz : hZERO()"
     },
     {

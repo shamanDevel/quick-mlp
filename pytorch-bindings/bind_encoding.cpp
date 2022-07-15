@@ -10,7 +10,7 @@
 torch::Tensor EncodingBindings::inference(const torch::Tensor& input) const
 {
     TORCH_CHECK(!hasParameters(), "Encoding has parameters, call the variation of 'inference' with parameters");
-    torch::Tensor output = torch::empty_like(input);
+    torch::Tensor output = torch::empty_like(input); //TODO: different datatype!
 
     auto inputWrapped = wrap(input);
     auto outputWrapped = wrap(output);
@@ -38,7 +38,7 @@ torch::Tensor EncodingBindings::inferenceWithParameter(const torch::Tensor& inpu
 torch::Tensor EncodingBindings::adjoint(const torch::Tensor& input, const torch::Tensor& adjOutput) const
 {
     TORCH_CHECK(!hasParameters(), "Encoding has parameters, call the variation of 'adjoint' with parameters");
-    torch::Tensor adjInput = torch::empty_like(input);
+    torch::Tensor adjInput = torch::zeros_like(input);
 
     auto inputWrapped = wrap(input);
     auto adjOutputWrapped = wrap(adjOutput);
@@ -53,8 +53,8 @@ std::tuple<torch::Tensor, torch::Tensor> EncodingBindings::adjointWithParameter(
     const torch::Tensor& parameterForward, const torch::Tensor& adjOutput) const
 {
     TORCH_CHECK(hasParameters(), "Encoding doesn't have parameters, call the variation of 'adjoint' without parameters");
-    torch::Tensor adjInput = torch::empty_like(input);
-    torch::Tensor adjParam = torch::empty_like(parameterForward);
+    torch::Tensor adjInput = torch::zeros_like(input);
+    torch::Tensor adjParam = torch::zeros_like(parameterForward);
 
     auto inputWrapped = wrap(input);
     auto paramWrapped = wrap(parameterForward);
