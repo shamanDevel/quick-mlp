@@ -32,6 +32,7 @@ _include_dirs = [
     '%s/third-party/cuda-kernel-loader/include'%_root,
     '%s/third-party/json/single_include'%_root,
     '%s/third-party/tinyformat'%_root,
+    '%s/third-party/magic_enum/include'%_root,
     '/usr/include',
 ]
 
