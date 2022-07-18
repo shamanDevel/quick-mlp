@@ -1,8 +1,14 @@
 import os
 import torch
+import torch.nn.functional
 import torch.autograd
+import torch.nn.init
+from typing import Optional
+
 torch.classes.load_library(os.path.join(os.path.split(__file__)[0], "../bin/qmlp.so"))
 print(torch.classes.loaded_libraries)
+
+torch.classes.qmlp.QuickMLP.set_debug_mode(True)
 
 class FusedEncoding(torch.nn.Module):
 
@@ -10,14 +16,34 @@ class FusedEncoding(torch.nn.Module):
         super().__init__()
         self._cfg = cfg
         self._encoding = torch.classes.qmlp.Encoding(cfg)
+        self._max_input_channel: int = self._encoding.max_input_channel()
+        self._num_output_channels : int= self._encoding.num_output_channels()
+        self._has_parameters: bool = self._encoding.has_parameters()
 
+    def max_input_channel(self) -> int:
+        return self._max_input_channel
 
-    def forward(self, input: torch.Tensor) -> torch.Tensor:
+    def num_output_channels(self) -> int:
+        return self._num_output_channels
+
+    def has_parameters(self) -> bool:
+        return self._has_parameters
+
+    def create_parameter_tensor(self) -> torch.Tensor:
+        assert self.has_parameters()
+        t: torch.Tensor = self._encoding.create_inference_parameters()
+        torch.nn.init.normal_(t)
+        return t
+
+    def forward(self, input: torch.Tensor, parameters: torch.Tensor=None) -> torch.Tensor:
         # no grad version:
-        # return self._activation.inference(input)
+        # return self._encoding.inference(input)
 
         # with autograd support
-        return self._encoding.forward(input)
+        if parameters is None:
+            return self._encoding.forward(input)
+        else:
+            return self._encoding.forward_with_parameter(input, parameters)
 
     def __repr__(self):
         return f'FusedEncoding("""{self._cfg}""")'
@@ -26,35 +52,71 @@ class FusedEncoding(torch.nn.Module):
         return f'FusedEncoding("""{self._cfg}""")'
 
 
-def _validate_encoding(code: str, baseline: torch.nn.Module, channels_in: int, channels_out: int):
+def _validate_encoding(code: str, baseline: Optional[torch.nn.Module], channels_in: int):
     enc = FusedEncoding(code)
     print(enc)
+    print("Num outputs:", enc.num_output_channels())
     baseline.to(dtype=torch.half, device=torch.device("cuda"))
-    N = 6
+    N = 8
+
+    if enc.has_parameters():
+        parameters = enc.create_parameter_tensor()
+        print("Encoding requires parameters, shape:", parameters.shape, ", dtype:", parameters.dtype)
+    else:
+        parameters = None
 
     # REFERENCE AGAINST BASELINE
 
-    input = torch.randn((6, channels_in), dtype=torch.float, device=torch.device("cuda"), requires_grad=True)
-    output_actual = enc(input)
-    output_expected = baseline(input)
+    input = torch.rand((N, channels_in), dtype=torch.float, device=torch.device("cuda"))
+    if channels_in==2:
+        input[:4,:] = torch.tensor([
+            [0,0], [0,1], [1,0], [1,1]
+        ], dtype=torch.float, device=torch.device("cuda"))
+    input = input.detach().requires_grad_(True)
+    output_actual = enc(input, parameters)
+    assert output_actual.shape[0] == N
+    assert output_actual.shape[1] == enc.num_output_channels()
 
-    print("Input:")
-    print(input)
-    print("Output:")
-    print(output_actual)
-    assert torch.allclose(output_actual, output_expected)
+    print("Input:"); print(input)
+    print("Output:"); print(output_actual)
 
-    loss = torch.sum(output_actual)
+    output_random = torch.randn_like(output_actual)
+    loss = torch.nn.functional.mse_loss(output_actual, output_random)
     loss.backward()
-    print("Gradient:")
-    print(input.grad)
+    grad_input_actual = input.grad.detach().clone()
+    if enc.has_parameters():
+        grad_parameter_actual = parameters.grad.detach().clone()
+
+    if baseline is not None:
+        input.grad = None
+        output_expected = baseline(input, parameters)
+        print("Expected:"); print(output_expected)
+        assert torch.allclose(output_actual, output_expected)
+        loss = torch.nn.functional.mse_loss(output_expected, output_random)
+        loss.backward()
+        grad_input_expected = input.grad.detach().clone()
+        if enc.has_parameters():
+            grad_parameter_expected = parameters.grad.detach().clone()
+
+    print("Gradient for the inputs:")
+    print("actual:"); print(grad_input_actual)
+    if baseline is not None:
+        print("expected:"); print(grad_input_expected)
+        assert torch.allclose(grad_input_actual, grad_input_expected)
+    if enc.has_parameters():
+        print("Gradient for the parameters:")
+        print("actual:"); print(grad_parameter_actual)
+        if baseline is not None:
+            print("expected:"); print(grad_parameter_expected)
+            assert torch.allclose(grad_parameter_actual, grad_parameter_expected)
 
     # GRAD TEST
-    def double_wrap(x, fun=enc):
-        return fun(x.to(dtype=torch.half)).to(dtype=torch.double)
+    def double_wrap(x, p, fun=enc):
+        return fun(x.to(dtype=torch.float), p.to(dtype=parameters.dtype) if p is not None else None).to(dtype=torch.double)
 
     input_double = torch.randn((6, channels_in), dtype=torch.double, device=torch.device("cuda"), requires_grad=True)
-    torch.autograd.gradcheck(double_wrap, input_double, eps=1e-1, atol=1e-1)
+    param_double = torch.randn(parameters.shape, dtype=torch.double, device=torch.device("cuda"), requires_grad=True) if parameters is not None else None
+    torch.autograd.gradcheck(double_wrap, (input_double, param_double), eps=1e-1, atol=1e-1)
 
     # TORCH JIT TEST
 
@@ -85,7 +147,42 @@ def test_identity():
 }
     """
     class Identity(torch.nn.Module):
-        def forward(self, x):
+        def forward(self, x, parameters_unused):
             return x
 
-    _validate_encoding(cfg, Identity(), 5, 5)
+    _validate_encoding(cfg, Identity(), 5)
+
+
+def test_densegrid_2d():
+    resolution = 2
+    channels = 4
+
+    cfg = f"""
+{{
+"id": "hashgrid",
+"start_in": 0,
+"n_in": 2,
+"n_levels": 1,
+"n_features_per_level": {channels},
+"log2_hashmap_size": -1,
+"min_resolution": {resolution},
+"max_resolution": 16,
+"combination_mode": "add",
+"bounding_box_min": [0,0],
+"bounding_box_size": [1,1]
+}}
+    """
+
+    class Densegrid2D(torch.nn.Module):
+        def __init__(self, r, c):
+            super().__init__()
+            self._r = r
+            self._c = c
+        def forward(self, x, parameters):
+            input = parameters.reshape(1, self._r, self._r, self._c).permute((0,3,2,1))
+            grid = (x.reshape(1, -1, 1, 2) * 2) - 1
+            output = torch.nn.functional.grid_sample(input, grid, mode='bilinear', align_corners=True, padding_mode='border')
+            return output[0,:,:,0].t()
+
+    _validate_encoding(cfg, Densegrid2D(resolution, channels), 2)
+

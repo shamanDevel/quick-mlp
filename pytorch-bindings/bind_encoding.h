@@ -41,7 +41,7 @@ public:
         return torch::empty({ static_cast<long long>(a_->parameterCount()) },
             at::TensorOptions().dtype(
             a_->parameterPrecision(qmlp::Tensor::INFERENCE) == qmlp::Tensor::FLOAT ? c10::kFloat : c10::kHalf
-        ).device(c10::kCUDA));
+        ).device(c10::kCUDA).requires_grad(true));
     }
     /**
      * Creates an empty parameter fit for storing the gradient parameters.

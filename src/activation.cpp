@@ -79,11 +79,7 @@ void Activation::forward(const Tensor& input, Tensor& output, CUstream stream)
         replaceAll(codeTemplate, "$$DEFINE_ACTIVATIONS$$", code());
         replaceAll(codeTemplate, "$$ACTIVATION_ID$$", id());
 
-        int compileFlags = ckl::KernelLoader::CompilationFlags::CompileThrowOnError;
-#ifndef NDEBUG
-        compileFlags |= ckl::KernelLoader::CompilationFlags::CompileDebugMode
-            | ckl::KernelLoader::CompilationFlags::CompileVerboseLogging;
-#endif
+        int compileFlags = QuickMLP::Instance().getCompileFlags();
         ckl::KernelFunction fun = kl->getKernel(
             "qmlp::kernel::ActivationForwardKernel",
             codeTemplate,
@@ -129,11 +125,7 @@ void Activation::adjoint(const Tensor& input, const Tensor& adjOutput, Tensor& a
         replaceAll(codeTemplate, "$$DEFINE_ACTIVATIONS$$", code());
         replaceAll(codeTemplate, "$$ACTIVATION_ID$$", id());
 
-        int compileFlags = ckl::KernelLoader::CompilationFlags::CompileThrowOnError;
-#ifndef NDEBUG
-        compileFlags |= ckl::KernelLoader::CompilationFlags::CompileDebugMode
-            | ckl::KernelLoader::CompilationFlags::CompileVerboseLogging;
-#endif
+        int compileFlags = QuickMLP::Instance().getCompileFlags();
         ckl::KernelFunction fun = kl->getKernel(
             "qmlp::kernel::ActivationAdjointKernel",
             codeTemplate,

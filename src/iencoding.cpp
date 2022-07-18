@@ -15,7 +15,7 @@ void IEncoding::forward(const Tensor& input, Tensor& output, CUstream stream,
     CHECK_DIM(input, 2);
     CHECK_DIM(output, 2);
     CHECK_DTYPE(input, Tensor::FLOAT);
-    CHECK_DTYPE(output, Tensor::HALF);
+    CHECK_DTYPE(output, Tensor::FLOAT);
     CHECK_SIZE(output, 0, input.size(0));
     CHECK_ERROR(input.size(1) > maxInputChannel());
     CHECK_ERROR(output.size(1) >= numOutputChannels());
@@ -31,11 +31,13 @@ void IEncoding::forward(const Tensor& input, Tensor& output, CUstream stream,
         //encoding parameters
         std::stringstream encodingIncludes;
         std::stringstream encodingConstants;
+        std::vector<std::string> constantNames;
         fillCode(encodingIncludes);
         encodingIncludes << "\n";
         if (hasParameters())
         {
-            encodingConstants << "__constant__ " << parameterName() << " " << constantName << "\n";
+            encodingConstants << "__constant__ " << parameterName() << " " << constantName << ";\n";
+            constantNames.push_back(constantName);
         }
         replaceAll(codeTemplate, "$$INCLUDES$$", encodingIncludes.str());
         replaceAll(codeTemplate, "$$ENCODING_CONSTANTS$$", encodingConstants.str());
@@ -48,18 +50,15 @@ void IEncoding::forward(const Tensor& input, Tensor& output, CUstream stream,
             callEncodings << ", " << constantName;
         }
         callEncodings << ");\n";
-        replaceAll(codeTemplate, "$$CALL_ENCODINGS$$", callEncodings.str());
+        replaceAll(codeTemplate, "$$CALL_ENCODINGS_FORWARD$$", callEncodings.str());
+        replaceAll(codeTemplate, "$$CALL_ENCODINGS_ADJOINT$$", "");
 
         //compile
-        int compileFlags = ckl::KernelLoader::CompilationFlags::CompileThrowOnError;
-#ifndef NDEBUG
-        compileFlags |= ckl::KernelLoader::CompilationFlags::CompileDebugMode
-            | ckl::KernelLoader::CompilationFlags::CompileVerboseLogging;
-#endif
+        int compileFlags = QuickMLP::Instance().getCompileFlags();
         ckl::KernelFunction fun = kl->getKernel(
             "qmlp::kernel::EncodingForwardKernel",
             codeTemplate,
-            {},
+            constantNames,
             compileFlags).value();
 
         forwardKernel_ = fun;
@@ -82,7 +81,7 @@ void IEncoding::forward(const Tensor& input, Tensor& output, CUstream stream,
         static_cast<int>(CKL_DIV_UP(numel, fun.bestBlockSize())),
         fun.minGridSize());
     auto inputAcc = input.accessor<kernel::Tensor2Read<float>>();
-    auto outputAcc = output.accessor<kernel::Tensor2RW<half>>();
+    auto outputAcc = output.accessor<kernel::Tensor2RW<float>>();
     fun.call(
         minGridSize, fun.bestBlockSize(), 0, stream,
         numel, inputAcc, outputAcc);
@@ -102,18 +101,17 @@ void IEncoding::adjoint(const Tensor& input, const Tensor& adjOutput, Tensor& ad
     CHECK_DIM(adjOutput, 2);
     CHECK_DIM(adjInput, 2);
     CHECK_DTYPE(input, Tensor::FLOAT);
-    CHECK_DTYPE(adjOutput, Tensor::HALF);
+    CHECK_DTYPE(adjOutput, Tensor::FLOAT);
     CHECK_DTYPE(adjInput, Tensor::FLOAT);
     CHECK_SIZE(adjOutput, 0, input.size(0));
     CHECK_SIZE(adjInput, 0, input.size(0));
     CHECK_ERROR(input.size(1) > maxInputChannel());
     CHECK_ERROR(adjOutput.size(1) >= numOutputChannels());
     CHECK_ERROR(adjInput.size(1) == input.size(1));
-    CHECK_ERROR(adjOutput.strides()[1] == 1, "The output stride along the channels must be 1");
     long long numel = input.size(0);
 
     static const std::string constantName = "cEncoding";
-    if (!forwardKernel_.has_value()) {
+    if (!adjointKernel_.has_value()) {
         //generate code
         auto kl = QuickMLP::Instance().kernelLoader();
         std::string codeTemplate = kl->findFile("qmlp/kernels/encoding_kernels.cuh").value();
@@ -121,40 +119,39 @@ void IEncoding::adjoint(const Tensor& input, const Tensor& adjOutput, Tensor& ad
         //encoding parameters
         std::stringstream encodingIncludes;
         std::stringstream encodingConstants;
+        std::vector<std::string> constantNames;
         fillCode(encodingIncludes);
         encodingIncludes << "\n";
         if (hasParameters())
         {
-            encodingConstants << "__constant__ " << parameterName() << " " << constantName << "\n";
+            encodingConstants << "__constant__ " << parameterName() << " " << constantName << ";\n";
+            constantNames.push_back(constantName);
         }
         replaceAll(codeTemplate, "$$INCLUDES$$", encodingIncludes.str());
         replaceAll(codeTemplate, "$$ENCODING_CONSTANTS$$", encodingConstants.str());
 
         //call encodings
         std::stringstream callEncodings;
-        callEncodings << qualifiedName() << "::adjoint(encodingInput, encodingAdjOutput, encodingAdjInput";
+        callEncodings << qualifiedName() << "::adjoint<true, true>(encodingInput, encodingAdjOutput, encodingAdjInput";
         if (hasParameters())
         {
             callEncodings << ", " << constantName;
         }
         callEncodings << ");\n";
-        replaceAll(codeTemplate, "$$CALL_ENCODINGS$$", callEncodings.str());
+        replaceAll(codeTemplate, "$$CALL_ENCODINGS_FORWARD$$", "");
+        replaceAll(codeTemplate, "$$CALL_ENCODINGS_ADJOINT$$", callEncodings.str());
 
         //compile
-        int compileFlags = ckl::KernelLoader::CompilationFlags::CompileThrowOnError;
-#ifndef NDEBUG
-        compileFlags |= ckl::KernelLoader::CompilationFlags::CompileDebugMode
-            | ckl::KernelLoader::CompilationFlags::CompileVerboseLogging;
-#endif
+        int compileFlags = QuickMLP::Instance().getCompileFlags();
         ckl::KernelFunction fun = kl->getKernel(
             "qmlp::kernel::EncodingAdjointKernel",
             codeTemplate,
-            {},
+            constantNames,
             compileFlags).value();
 
-        forwardKernel_ = fun;
+        adjointKernel_ = fun;
     }
-    auto& fun = forwardKernel_.value();
+    auto& fun = adjointKernel_.value();
 
     //fill constants of the encodings
     if (hasParameters())
@@ -177,7 +174,7 @@ void IEncoding::adjoint(const Tensor& input, const Tensor& adjOutput, Tensor& ad
         static_cast<int>(CKL_DIV_UP(numel, fun.bestBlockSize())),
         fun.minGridSize());
     auto inputAcc = input.accessor<kernel::Tensor2Read<float>>();
-    auto adjOutputAcc = adjOutput.accessor<kernel::Tensor2Read<half>>();
+    auto adjOutputAcc = adjOutput.accessor<kernel::Tensor2Read<float>>();
     auto adjInputAcc = adjInput.accessor<kernel::Tensor2RW<float>>();
     fun.call(
         minGridSize, fun.bestBlockSize(), 0, stream,

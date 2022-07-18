@@ -59,7 +59,7 @@ public:
     [[nodiscard]] bool hasParameters() const override;
     [[nodiscard]] std::string parameterName() const override;
     [[nodiscard]] Tensor::Precision parameterPrecision(Tensor::Usage usage) const override;
-    [[nodiscard]] size_t parameterCount() const override;
+    [[nodiscard]] int parameterCount() const override;
     void setParameter(const Tensor& tensor, Tensor::Usage usage) override;
     void fillParameterConstant(const std::string& constantName, const ckl::KernelFunction& function,
         CUstream stream) override;

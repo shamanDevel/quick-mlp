@@ -1,7 +1,7 @@
 #pragma once
 
 #ifndef CUDA_NO_HOST
-#include <host_defines.h>
+#include <cuda_runtime_api.h>
 #endif
 
 #include <qmlp/kernels/common.cuh>

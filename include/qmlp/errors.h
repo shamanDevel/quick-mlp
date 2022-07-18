@@ -86,5 +86,5 @@ QUICKMLP_NAMESPACE_END
   }} while(false)
 
 #define CHECK_DIM(x, d)	CHECK_ERROR((x.ndim() == (d)), #x " must be a tensor with ", d, " dimensions, but has ", x.ndim(), " dimensions")
-#define CHECK_SIZE(x, d, s) CHECK_ERROR((x.size(d) == (s)), #x " must have ", s, " entries at dimension ", d, ", but has ", x.size(d), " entries")
-#define CHECK_DTYPE(x, t) CHECK_ERROR(x.precision()==t, #x " must be of type ", t, ", but is ", x.precision())
+#define CHECK_SIZE(x, d, s) CHECK_ERROR((static_cast<int64_t>(x.size(d)) == static_cast<int64_t>(s)), #x " must have ", s, " entries at dimension ", d, ", but has ", x.size(d), " entries")
+#define CHECK_DTYPE(x, t) CHECK_ERROR(x.precision()==t, #x " must be of type ", QUICKMLP_NAMESPACE::Tensor::NamePerEntry[t], ", but is ", QUICKMLP_NAMESPACE::Tensor::NamePerEntry[x.precision()])

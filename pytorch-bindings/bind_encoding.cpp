@@ -7,10 +7,19 @@
 
 #include <unordered_map>
 
+static torch::Tensor createOutputTensor(const torch::Tensor& input, int channels)
+{
+    TORCH_CHECK(input.dim() == 2, "Inputs must be 2D (B,C)");
+    auto B = input.size(0);
+    auto t = torch::empty({ B, channels }, at::TensorOptions().dtype(c10::kFloat).device(c10::kCUDA).memory_format(c10::MemoryFormat::Contiguous));
+    TORCH_CHECK(t.stride(1) == 1);
+    return t;
+}
+
 torch::Tensor EncodingBindings::inference(const torch::Tensor& input) const
 {
     TORCH_CHECK(!hasParameters(), "Encoding has parameters, call the variation of 'inference' with parameters");
-    torch::Tensor output = torch::empty_like(input); //TODO: different datatype!
+    torch::Tensor output = createOutputTensor(input, a_->numOutputChannels());
 
     auto inputWrapped = wrap(input);
     auto outputWrapped = wrap(output);
@@ -24,7 +33,7 @@ torch::Tensor EncodingBindings::inferenceWithParameter(const torch::Tensor& inpu
     const torch::Tensor& parameterForward) const
 {
     TORCH_CHECK(hasParameters(), "Encoding doesn't have parameters, call the variation of 'inference' without parameters");
-    torch::Tensor output = torch::empty_like(input);
+    torch::Tensor output = createOutputTensor(input, a_->numOutputChannels());
 
     auto inputWrapped = wrap(input);
     auto paramWrapped = wrap(parameterForward);

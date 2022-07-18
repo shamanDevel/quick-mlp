@@ -5,11 +5,16 @@
 #include <qmlp/kernels/encoding_hashgrid_config.cuh>
 #include <qmlp/kernels/loops.cuh>
 
-QUICKMLP_NAMESPACE_BEGIN
-    NLOHMANN_JSON_SERIALIZE_ENUM(LayerCombinationMode, {
+QUICKMLP_KERNEL_NAMESPACE_BEGIN
+
+NLOHMANN_JSON_SERIALIZE_ENUM(LayerCombinationMode, {
     {LayerCombinationMode::CONCAT, "concat"},
     {LayerCombinationMode::ADD, "add"}
-})
+    })
+
+QUICKMLP_KERNEL_NAMESPACE_END
+
+QUICKMLP_NAMESPACE_BEGIN
 
 static std::vector<float> vectorOrUnit(const std::vector<float>& vx, int d, float v)
 {
@@ -66,7 +71,7 @@ EncodingHashGrid::EncodingHashGrid(int start_channel, int dimension, int num_lev
     {
         int resolution = static_cast<int>(std::floor(min_resolution * (std::pow(levelScale, l))));
         size_t requiredCells = ipow<size_t>(resolution, dimension);
-        if (requiredCells <= hashmapSize_)
+        if (hashmapSize_ < 0 || requiredCells <= hashmapSize_)
         {
             //dense grid
             layers_.push_back({
@@ -171,7 +176,7 @@ Tensor::Precision EncodingHashGrid::parameterPrecision(Tensor::Usage usage) cons
     return Tensor::FLOAT;
 }
 
-size_t EncodingHashGrid::parameterCount() const
+int EncodingHashGrid::parameterCount() const
 {
     return numParameters_;
 }
@@ -194,8 +199,10 @@ void EncodingHashGrid::fillParameterConstant(const std::string& constantName, co
     CUstream stream)
 {
     static std::vector<char> MEMORY(1024 * 1024);
+#define PADDING 8
+
     size_t index = 0;
-    const auto addWithPadding = [&](const void* mem, size_t len, int padding = 32)
+    const auto addWithPadding = [&](const void* mem, size_t len, int padding = PADDING)
     {
         //add padding
         index = kernel::roundUpPower2(index, padding);
@@ -206,18 +213,19 @@ void EncodingHashGrid::fillParameterConstant(const std::string& constantName, co
         }
     };
 
-    for (const auto& l : layers_)
-        addWithPadding(&l, sizeof(l));
-
     float* parametersForward = parametersForward_.defined() ? parametersForward_.dataPtr<float>() : nullptr;
     float* parametersBackward = parametersGradients_.defined() ? parametersGradients_.dataPtr<float>() : nullptr;
     addWithPadding(&parametersForward, sizeof(float*));
     addWithPadding(&parametersBackward, sizeof(float*));
 
+    for (size_t i=0; i<layers_.size(); ++i)
+        addWithPadding(&layers_[i], sizeof(kernel::HashGridLayerConfig), i==0 ? PADDING : 1);
+
     addWithPadding(boundingBoxMin_.data(), dimension_ * sizeof(float));
     addWithPadding(boundingBoxInvSize_.data(), dimension_ * sizeof(float));
 
-    CKL_SAFE_CALL(cuMemcpyHtoDAsync(function.constant(constantName), MEMORY.data(), index, stream));
+    CUdeviceptr dst = function.constant(constantName);
+    CKL_SAFE_CALL(cuMemcpyHtoDAsync(dst, MEMORY.data(), index, stream));
 }
 
 void EncodingHashGrid::zeroGradients()

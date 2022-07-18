@@ -26,16 +26,16 @@ QUICKMLP_KERNEL_NAMESPACE_BEGIN
 __global__ void EncodingForwardKernel(
     long long virtual_size, //numel, 1, 1
     const Tensor2Read<float> inputs, //shape (numel, C)
-    Tensor2RW<half> outputs //shape (numel, C)
+    Tensor2RW<float> outputs //shape (numel, C)
     )
 {
     KERNEL_1D_LOOP(index, virtual_size)
     {
-        auto encodingInput = inputs[index];
+        const auto encodingInput = inputs[index];
         auto encodingOutput = outputs[index].data(); //assume stride of C = 1
 
         //CODE GENERATION [[
-        $$CALL_ENCODINGS$$
+        $$CALL_ENCODINGS_FORWARD$$
         //]] CODE GENERATIION
     }
     KERNEL_1D_LOOP_END
@@ -44,20 +44,21 @@ __global__ void EncodingForwardKernel(
 __global__ void EncodingAdjointKernel(
     long long virtual_size, //numel, C, 1
     const Tensor2Read<float> inputs, //shape (numel, C)
-    const Tensor2Read<half> adjOutputs, //shape (numel, C)
+    const Tensor2Read<float> adjOutputs, //shape (numel, C)
     Tensor2RW<float> adjInputs //shape (numel, C)
 )
 {
     KERNEL_1D_LOOP(index, virtual_size)
     {
-        auto encodingInput = inputs[index];
-        auto encodingAdjOutput = adjOutputs[index].data(); //assume stride of C = 1
+        const auto encodingInput = inputs[index];
+        const auto encodingAdjOutput = adjOutputs[index];
         auto encodingAdjInput = adjInputs[index];
 
         //CODE GENERATION [[
-        $$CALL_ENCODINGS$$
+        $$CALL_ENCODINGS_ADJOINT$$
         //]] CODE GENERATIION
     }
+    KERNEL_1D_LOOP_END
 }
 
 QUICKMLP_KERNEL_NAMESPACE_END

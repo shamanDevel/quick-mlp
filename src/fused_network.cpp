@@ -410,11 +410,7 @@ void FusedNetwork::compileInferenceKernel()
     replaceAll(codeTemplate, "$$CALL_NETWORK_LAYERS$$", callLayers.str());
 
     //COMPILE
-    int compileFlags = ckl::KernelLoader::CompilationFlags::CompileThrowOnError;
-#ifndef NDEBUG
-    compileFlags |= ckl::KernelLoader::CompilationFlags::CompileDebugMode
-        | ckl::KernelLoader::CompilationFlags::CompileVerboseLogging;
-#endif
+    int compileFlags = QuickMLP::Instance().getCompileFlags();
     ckl::KernelFunction fun = kl->getKernel(
         "qmlp::kernel::NetworkKernelInferenceAndForward",
         codeTemplate,
@@ -568,11 +564,7 @@ void FusedNetwork::compileForwardKernel()
     replaceAll(codeTemplate, "$$CALL_NETWORK_LAYERS$$", callLayers.str());
 
     //COMPILE
-    int compileFlags = ckl::KernelLoader::CompilationFlags::CompileThrowOnError;
-#ifndef NDEBUG
-    compileFlags |= ckl::KernelLoader::CompilationFlags::CompileDebugMode
-        | ckl::KernelLoader::CompilationFlags::CompileVerboseLogging;
-#endif
+    int compileFlags = QuickMLP::Instance().getCompileFlags();
     ckl::KernelFunction fun = kl->getKernel(
         "qmlp::kernel::NetworkKernelInferenceAndForward",
         codeTemplate,
@@ -764,11 +756,7 @@ void FusedNetwork::compileBackwardKernel(int flags)
     replaceAll(codeTemplate, "$$CALL_ENCODINGS$$", callEncodings.str());
 
     //COMPILE
-    int compileFlags = ckl::KernelLoader::CompilationFlags::CompileThrowOnError;
-#ifndef NDEBUG
-    compileFlags |= ckl::KernelLoader::CompilationFlags::CompileDebugMode
-        | ckl::KernelLoader::CompilationFlags::CompileVerboseLogging;
-#endif
+    int compileFlags = QuickMLP::Instance().getCompileFlags();
     ckl::KernelFunction fun = kl->getKernel(
         "qmlp::kernel::NetworkKernelBackward",
         codeTemplate,

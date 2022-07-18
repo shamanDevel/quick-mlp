@@ -32,8 +32,20 @@ QUICKMLP_NAMESPACE::Tensor wrap(const torch::Tensor& t)
     return QUICKMLP_NAMESPACE::Tensor( t.data_ptr(), p, sizes, strides );
 }
 
+struct QuickMLPBindings : public torch::CustomClassHolder
+{
+    static void setDebugMode(bool enable)
+    {
+        qmlp::QuickMLP::Instance().setDebugMode(enable);
+    }
+};
+
 TORCH_LIBRARY(qmlp, m)
 {
+    m.class_<QuickMLPBindings>("QuickMLP")
+        .def_static("set_debug_mode", &QuickMLPBindings::setDebugMode)
+    ;
+
     bindActivation(m);
     bindEncoding(m);
 }

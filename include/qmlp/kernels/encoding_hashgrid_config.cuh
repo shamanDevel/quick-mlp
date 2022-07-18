@@ -20,7 +20,7 @@ enum class LayerCombinationMode
      */
      ADD
 };
-struct alignas(32) HashGridLayerConfig
+struct alignas(8) HashGridLayerConfig
 {
     int memoryOffset; //offset in floats from the start of the float array)
     int resolution; //the per-side resolution of this layer
@@ -30,11 +30,11 @@ struct alignas(32) HashGridLayerConfig
 template<int NumDimensions, int NumLayers>
 struct HashGridConfig
 {
-    alignas(32) HashGridLayerConfig layers[NumLayers];
-    alignas(32) float* __restrict__ parametersForward;
-    alignas(32) float* parametersBackward;
-    alignas(32) StaticArray<float, NumDimensions> boundingBoxMin;
-    alignas(32) StaticArray<float, NumDimensions> boundingBoxInvSize;
+    alignas(8) float* __restrict__ parametersForward;
+    alignas(8) float* parametersBackward;
+    alignas(8) HashGridLayerConfig layers[NumLayers];
+    alignas(8) StaticArray<float, NumDimensions> boundingBoxMin;
+    alignas(8) StaticArray<float, NumDimensions> boundingBoxInvSize;
 };
 
 

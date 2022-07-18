@@ -5,23 +5,23 @@
 #include <cuda_runtime.h>
 #endif
 
-#include "common.cuh"
-#include "encoding_hashgrid_config.cuh"
+#include <qmlp/kernels/common.cuh>
+#include <qmlp/kernels/encoding_hashgrid_config.cuh>
 
 QUICKMLP_KERNEL_NAMESPACE_BEGIN
 
 template<int NumDimensions> using fposition_t = StaticArray<float, NumDimensions>;
-template<int NumDimensions> using iposition_t = StaticArray<int, NumDimensions>;
+template<int NumDimensions> using iposition_t = StaticArray<unsigned int, NumDimensions>;
 template<int NumFeaturesPerLayer> using feature_t = StaticArray<float, NumFeaturesPerLayer>;
 
 constexpr const int MaxHashDimensions = 6;
 template<int N> struct HashValue;
-template<> struct HashValue<0> { static constexpr int hash = 1; };
-template<> struct HashValue<1> { static constexpr int hash = 2654435761; };
-template<> struct HashValue<2> { static constexpr int hash = 805459861; };
-template<> struct HashValue<3> { static constexpr int hash = 73856093; };
-template<> struct HashValue<4> { static constexpr int hash = 19349663; };
-template<> struct HashValue<5> { static constexpr int hash = 834927; };
+template<> struct HashValue<0> { static constexpr unsigned int hash = 1; };
+template<> struct HashValue<1> { static constexpr unsigned int hash = 43857811; };
+template<> struct HashValue<2> { static constexpr unsigned int hash = 83857661; };
+template<> struct HashValue<3> { static constexpr unsigned int hash = 73856093; };
+template<> struct HashValue<4> { static constexpr unsigned int hash = 19349663; };
+template<> struct HashValue<5> { static constexpr unsigned int hash = 834927; };
 
 /**
  * \brief Computes the index into the latent grid, both for dense and hash grids
@@ -33,27 +33,27 @@ struct Indexing
 {
     typedef StaticArray<float, NumDimensions> position_t;
 
-    __forceinline__ __host__ __device__ static int indexDense(const iposition_t<NumDimensions>& position, int resolution)
+    __forceinline__ __host__ __device__ static unsigned int indexDense(const iposition_t<NumDimensions>& position, unsigned int resolution)
     {
         //last coordinate is fastest
-        return position[CurrentN] + indexDense<CurrentN - 1>(position, resolution) * resolution;
+        return position[CurrentN] + Indexing<NumDimensions, CurrentN - 1>::indexDense(position, resolution) * resolution;
     }
 
-    __forceinline__ __host__ __device__ static int indexHash(const iposition_t<NumDimensions>& position)
+    __forceinline__ __host__ __device__ static unsigned int indexHash(const iposition_t<NumDimensions>& position)
     {
         static_assert(NumDimensions <= MaxHashDimensions, "NumDimensions exceeds the supported dimensions for hashing (no more hash seeds defined)");
-        return (position[CurrentN] * HashValue<CurrentN>::hash) ^ indexHash<CurrentN - 1>(position);
+        return (position[CurrentN] * HashValue<CurrentN>::hash) ^ Indexing<NumDimensions, CurrentN - 1>::indexHash(position);
     }
 };
 template<int NumDimensions>
 struct Indexing<NumDimensions, 0>
 {
-    __forceinline__ __host__ __device__ static int indexDense(const iposition_t<NumDimensions>& position, int resolution)
+    __forceinline__ __host__ __device__ static unsigned int indexDense(const iposition_t<NumDimensions>& position, unsigned int resolution)
     {
         return position[0];
     }
 
-    __forceinline__ __host__ __device__ static int indexHash(const iposition_t<NumDimensions >& position)
+    __forceinline__ __host__ __device__ static unsigned int indexHash(const iposition_t<NumDimensions >& position)
     {
         return (position[0] * HashValue<0>::hash);
     }
@@ -106,7 +106,7 @@ struct ValueFetcher
 template<int NumDimensions, typename Fetcher, int CurrentN=NumDimensions-1>
 struct HypercubeInterpolator
 {
-    __host__ __device__ static void interpolate(const Fetcher& fetcher,
+    __host__ __device__ static void interpolate(Fetcher& fetcher,
         const fposition_t<NumDimensions>& fpos, const iposition_t<NumDimensions>& iposL, const iposition_t<NumDimensions>& iposH, float alpha=1)
     {
         //interpolation of N-D is a linear interpolation in (N-1)-D
@@ -119,7 +119,7 @@ struct HypercubeInterpolator
 template<int NumDimensions, typename Fetcher>
 struct HypercubeInterpolator<NumDimensions, Fetcher, 0>
 {
-    __host__ __device__ static void interpolate(const Fetcher& fetcher,
+    __host__ __device__ static void interpolate(Fetcher& fetcher,
         const fposition_t<NumDimensions>& fpos, const iposition_t<NumDimensions>& iposL, const iposition_t<NumDimensions>& iposH, float alpha = 1)
     {
         //linear interpolation in 1D
@@ -149,14 +149,14 @@ struct EncodingHashGrid
      * \param parameters the parameter tensor
      * \param output the output (shared memory)
      */
-    template<bool Add>
+    template<bool Add, typename O>
     static __device__ void forwardLayer(
-        const fposition_t& position, const HashGridLayerConfig& cfg, 
-        const float* __restrict__ parameters, half* output)
+        const fposition_t<NumDimensions>& position, const HashGridLayerConfig& cfg,
+        const float* __restrict__ parameters, O* output)
     {
         //get corner positions and interpolation values
-        fposition_t fpos;
-        iposition_t iposL, iposH;
+        fposition_t<NumDimensions> fpos;
+        iposition_t<NumDimensions> iposL, iposH;
         const int rm1 = cfg.resolution - 1;
 #pragma unroll
         for (int i = 0; i < NumDimensions; ++i) {
@@ -164,36 +164,44 @@ struct EncodingHashGrid
             iposL[i] = max(0, min(rm1, static_cast<int>(p)));
             iposH[i] = max(0, min(rm1, static_cast<int>(p)+1));
             fpos[i] = p - static_cast<float>(iposL[i]);
+
+            printf("[%03d] d=%d, iposL=%d, iposH=%d, fpos=%.3f\n",
+                threadIdx.x, i, iposL[i], iposH[i], fpos[i]);
         }
 
         //interpolate feature
-        feature_t feature{ zero_initialization_tag() };
+        feature_t<NumFeaturesPerLayer> feature{ zero_initialization_tag() };
         ValueFetcher<NumDimensions, NumFeaturesPerLayer> fetcher(cfg, parameters, feature);
+        HypercubeInterpolator<NumDimensions, decltype(fetcher)>::interpolate(fetcher, fpos, iposL, iposH);
 
         //write to output
         if constexpr (Add)
         {
 #pragma unroll
-            for (int i = 0; i < NumFeaturesPerLayer; ++i)
-                output[i] = __hadd(output[i], feature[i]);
+            for (int i = 0; i < NumFeaturesPerLayer; ++i) {
+                output[i] += fcast<O>(feature[i]);
+            }
         }
         else
         {
 #pragma unroll
-            for (int i = 0; i < NumFeaturesPerLayer; ++i)
-                output[i] = __float2half(feature[i]);
+            for (int i = 0; i < NumFeaturesPerLayer; ++i) {
+                printf("[%03d] feature %d = %.4f\n", threadIdx.x, i, feature[i]);
+                output[i] = fcast<O>(feature[i]);
+            }
         }
     }
 
-    template<typename I>
-    static __device__ void forward(const I input, half* output, const param_t& params)
+    template<typename I, typename O>
+    static __device__ void forward(const I input, O* output, const param_t& params)
     {
         //fetch position and transform to unit cube
-        fposition_t position;
+        fposition_t<NumDimensions> position;
 #pragma unroll
         for (int i = 0; i < NumDimensions; ++i) {
             position[i] = (input[i + StartChannel] - params.boundingBoxMin[i]) * params.boundingBoxInvSize[i];
         }
+        printf("[%03d] unit position: %.3f, %.3f\n", threadIdx.x, position[0], position[1]);
 
         //loop over the layers
         if constexpr (CombinationMode == LayerCombinationMode::CONCAT)
@@ -210,8 +218,8 @@ struct EncodingHashGrid
         }
     }
 
-    template<bool EvaluateInputGradients, bool EvaluateParameterGradients, typename I, typename O>
-    static __device__ void adjoint(const I& input, const half* adjOutput, O& adjInput, const param_t& params)
+    template<bool EvaluateInputGradients, bool EvaluateParameterGradients, typename I, typename O, typename AdjI>
+    static __device__ void adjoint(const I& input, const O& adjOutput, AdjI& adjInput, const param_t& params)
     {
         //TODO: implement
     }

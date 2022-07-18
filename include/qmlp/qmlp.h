@@ -12,6 +12,7 @@ class QuickMLP : public NonAssignable
 {
 private:
     ckl::KernelLoader_ptr kl_;
+    bool enableDebugMode_;
 
     QuickMLP();
 
@@ -26,7 +27,17 @@ public:
      */
     [[nodiscard]] ckl::KernelLoader_ptr kernelLoader() const;
 
+    /**
+     * Enable (true) or disable (false) debug mode.
+     * In debug mode, the verbose logging during compilation is enabled
+     * and the kernels are also compiled with the debug flag.
+     */
+    void setDebugMode(bool enable);
 
+    /**
+     * Returns the compile flags for CKL.
+     */
+    int getCompileFlags() const;
 };
 
 QUICKMLP_NAMESPACE_END

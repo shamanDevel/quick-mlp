@@ -7,6 +7,7 @@
 #include <vector>
 #include <variant>
 #include <array>
+#include <random>
 #include <cuda_fp16.h>
 
 #include "errors.h"
@@ -27,6 +28,7 @@ public:
     };
     static const int BytesPerEntry[];
     static const std::string DatatypePerEntry[];
+    static const std::string NamePerEntry[];
 
     enum Usage
     {
@@ -152,10 +154,10 @@ public:
     {
         assert(l.size() == ndim());
         int64_t idx = 0;
-        for (int i = 0; i < l.size(); ++i) {
+        for (size_t i = 0; i < l.size(); ++i) {
             assert(l.begin()[i] >= 0);
             assert(l.begin()[i] < sizes_[i]);
-            idx += l.begin()[i] * strides_[i];
+            idx += static_cast<int64_t>(l.begin()[i]) * strides_[i];
         }
         return idx;
     }
@@ -190,6 +192,27 @@ public:
      * if the strides skip entries.
      */
     void zero_();
+
+    /**
+     * Fills this tensor with random uniform numbers in [a,b]
+     */
+    template<typename RNG>
+    void rand_(float a, float b, RNG& rng)
+    {
+        std::uniform_real_distribution<float> distr(a, b);
+        if (precision_ == FLOAT)
+        {
+            std::vector<float> data(numel());
+            for (int64_t i = 0; i < numel(); ++i) data[i] = distr(rng);
+            CKL_SAFE_CALL(cudaMemcpy(rawPtr(), data.data(), sizeof(float) * numel(), cudaMemcpyHostToDevice));
+        }
+        else if (precision_ == HALF)
+        {
+            std::vector<half> data(numel());
+            for (int64_t i = 0; i < numel(); ++i) data[i] = __float2half(distr(rng));
+            CKL_SAFE_CALL(cudaMemcpy(rawPtr(), data.data(), sizeof(half) * numel(), cudaMemcpyHostToDevice));
+        }
+    }
 
     /**
      * Returns the kernel accessor from this.

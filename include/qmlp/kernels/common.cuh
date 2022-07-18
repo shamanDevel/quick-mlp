@@ -38,6 +38,22 @@ constexpr __host__ __device__ auto min(A a, B b)
     return a < b ? a : b;
 }
 
+
+/**
+ * Templated casting between float and half datatypes
+ */
+template<typename Dst, typename Src>
+__forceinline__ __host__ __device__ Dst fcast(const Src& src);
+
+template<>
+__forceinline__ __host__ __device__ float fcast<float, half>(const half& src) { return __half2float(src); }
+template<>
+__forceinline__ __host__ __device__ float fcast<float, float>(const float& src) { return src; }
+template<>
+__forceinline__ __host__ __device__ half fcast<half, half>(const half& src) { return src; }
+template<>
+__forceinline__ __host__ __device__ half fcast<half, float>(const float& src) { return __float2half(src); }
+
 struct zero_initialization_tag {};
 
 template<typename T, int N>
@@ -54,7 +70,7 @@ public:
     __forceinline__ __host__ __device__ constexpr const T& operator[](int i) const { return data_[i]; }
     __forceinline__ __host__ __device__ constexpr T& operator[](int i) { return data_[i]; }
 
-    __forceinline__ __host__ __device__ StaticArray<T, N> replace(int d, T value)
+    __forceinline__ __host__ __device__ StaticArray<T, N> replace(int d, T value) const
     {
         StaticArray<T, N> self = *this;
         self[d] = value;

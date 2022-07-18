@@ -5,6 +5,8 @@ import torch.autograd
 torch.classes.load_library(os.path.join(os.path.split(__file__)[0], "../bin/qmlp.so"))
 print(torch.classes.loaded_libraries)
 
+torch.classes.qmlp.QuickMLP.set_debug_mode(True)
+
 class FusedActivation(torch.nn.Module):
     
     def __init__(self, cfg:str):
@@ -43,15 +45,18 @@ def _validate_activation(code:str, baseline: torch.nn.Module):
     output_random = torch.randn_like(output_actual)
     loss = torch.nn.functional.mse_loss(output_actual, output_random)
     loss.backward()
+    grad_actual = input.grad.detach().clone()
+
+    input.grad = None
+    output_expected = baseline(input)
+    loss = torch.nn.functional.mse_loss(output_expected, output_random)
+    loss.backward()
+    grad_expected = input.grad.detach().clone()
+
     print("Gradient:")
-    print(input.grad)
-
-    # GRAD TEST
-    def double_wrap(x, fun=activ):
-        return fun(x.to(dtype=torch.half)).to(dtype=torch.double)
-
-    input_double = torch.randn((5, 3), dtype=torch.double, device=torch.device("cuda"), requires_grad=True)
-    torch.autograd.gradcheck(double_wrap, input_double, eps=1e-1, atol=1e-1)
+    print("actual:"); print(grad_actual)
+    print("expected:"); print(grad_expected)
+    assert torch.allclose(grad_actual, grad_expected)
 
     # TORCH JIT TEST
 

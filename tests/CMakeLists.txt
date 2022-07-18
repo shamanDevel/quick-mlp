@@ -29,6 +29,7 @@ set(QUICKMLP_TEST_FILES
     test_against_eigen.h
     test_against_eigen1.cpp
     test_against_eigen2.cpp
+    test_hashgrid.cpp
     )
 
 add_executable(qmlp-tests

@@ -21,16 +21,16 @@ QUICKMLP_NAMESPACE_BEGIN
  * <code>
  * struct NameOfEncoding
  * {
- *     template<typename I>
- *     static __device__ void forward(const I input, half* output [, const param-type& param-name ]);
+ *     template<typename I, typename O>
+ *     static __device__ void forward(const I input, O* output [, const param-type& param-name ]);
  *
- *     template<bool EvaluateInputGradients, bool EvaluateParameterGradients, typename I, typename O>
- *     static __device__ void adjoint(const I& input, const half* adjOutput, O& adjInput [, const param-type& param-name ]);
+ *     template<bool EvaluateInputGradients, bool EvaluateParameterGradients, typename I, typename O, typename AdjI>
+ *     static __device__ void adjoint(const I& input, const O* adjOutput, AdjI& adjInput [, const param-type& param-name ]);
  * }
  * </code>
  * The input type provides a subscript operator <code>float operator[](size_t idx)</code>
  *  to fetch the input at the given index.
- * The pointer to the output 
+ * The pointer to the output can be of type 'float' or 'half'.
  */
 class IEncoding
 {
@@ -78,7 +78,7 @@ public:
 
     [[nodiscard]] virtual Tensor::Precision parameterPrecision(Tensor::Usage usage) const { return Tensor::FLOAT; }
 
-    [[nodiscard]] virtual size_t parameterCount() const { return 0; }
+    [[nodiscard]] virtual int parameterCount() const { return 0; }
 
     /**
      * Sets the underlying parameter to the specified tensor.
