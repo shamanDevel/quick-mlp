@@ -68,10 +68,10 @@ def _validate_encoding(code: str, baseline: Optional[torch.nn.Module], channels_
     # REFERENCE AGAINST BASELINE
 
     input = torch.rand((N, channels_in), dtype=torch.float, device=torch.device("cuda")) * 2 - 1
-    if channels_in==2:
-        input[:4,:] = torch.tensor([
-            [-1,-1], [-1,1], [1,-1], [1,1]
-        ], dtype=torch.float, device=torch.device("cuda"))
+    #if channels_in==2:
+    #    input[:4,:] = torch.tensor([
+    #        [-1,-1], [-1,1], [1,-1], [1,1]
+    #    ], dtype=torch.float, device=torch.device("cuda"))
     input = input.detach().requires_grad_(True)
     output_actual = enc(input, parameters)
     assert output_actual.shape[0] == N

@@ -198,7 +198,7 @@ struct HypercubeInterpolator
             signs.replace(CurrentN, -1.f));
         HypercubeInterpolator<NumDimensions, Fetcher, CurrentN - 1>::template adjoint<NumFeaturesPerLayer>(
             fetcher, fpos, iposL.replace(CurrentN, iposH[CurrentN]), iposH, adjPosition, adjFeature,
-            alphas.replace(CurrentN, 1 - fpos[CurrentN]),
+            alphas.replace(CurrentN, fpos[CurrentN]),
             signs);
     }
 };
