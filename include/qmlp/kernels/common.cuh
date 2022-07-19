@@ -62,19 +62,34 @@ class StaticArray
     T data_[N];
 
 public:
-    __forceinline__ __host__ __device__ StaticArray(){}
-    __host__ __device__ StaticArray(zero_initialization_tag /*tag*/)
+    constexpr __forceinline__ __host__ __device__ StaticArray(){}
+    constexpr __host__ __device__ StaticArray(zero_initialization_tag /*tag*/)
         : data_{ 0 }
     {}
+    constexpr __host__ __device__ StaticArray(T initialValue)
+    {
+        for (int i = 0; i < N; ++i) data_[i] = initialValue;
+    }
 
-    __forceinline__ __host__ __device__ constexpr const T& operator[](int i) const { return data_[i]; }
-    __forceinline__ __host__ __device__ constexpr T& operator[](int i) { return data_[i]; }
+    constexpr __forceinline__ __host__ __device__ const T& operator[](int i) const { return data_[i]; }
+    constexpr __forceinline__ __host__ __device__ T& operator[](int i) { return data_[i]; }
 
-    __forceinline__ __host__ __device__ StaticArray<T, N> replace(int d, T value) const
+    constexpr __forceinline__ __host__ __device__ StaticArray<T, N> replace(int d, T value) const
     {
         StaticArray<T, N> self = *this;
         self[d] = value;
         return self;
+    }
+
+    /**
+     * Multiplies all array elements together, but ignores dimension 'd'.
+     */
+    constexpr __forceinline__ __host__ __device__ T reduceMulWithoutD(int d, int start=0) const
+    {
+        T result = T(1);
+        for (int i = start; i < N; ++i)
+            if (i != d) result *= data_[i];
+        return result;
     }
 };
 

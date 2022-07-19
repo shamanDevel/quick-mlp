@@ -132,6 +132,7 @@ void IEncoding::adjoint(const Tensor& input, const Tensor& adjOutput, Tensor& ad
 
         //call encodings
         std::stringstream callEncodings;
+        //TODO: enable only those derivatives that are needed
         callEncodings << qualifiedName() << "::adjoint<true, true>(encodingInput, encodingAdjOutput, encodingAdjInput";
         if (hasParameters())
         {
