@@ -133,7 +133,7 @@ nlohmann::json EncodingHashGrid::toJson() const
 
 std::string EncodingHashGrid::ID()
 {
-    return "hashgrid";
+    return "HashGrid";
 }
 
 std::string EncodingHashGrid::id() const
@@ -177,7 +177,7 @@ bool EncodingHashGrid::hasParameters() const
 std::string EncodingHashGrid::parameterName() const
 {
     return tinyformat::format("%s::HashGridConfig<%d,%d>",
-        CKL_STR(QUICKMLP_KERNEL_NAMESPACE), dimension(), numLevels());
+        CKL_STR(QUICKMLP_KERNEL_NAMESPACE), ndim(), numLevels());
 }
 
 Tensor::Precision EncodingHashGrid::parameterPrecision(Tensor::Usage usage) const
@@ -204,10 +204,8 @@ void EncodingHashGrid::setParameter(const Tensor& tensor, Tensor::Usage usage)
         parametersGradients_ = tensor;
 }
 
-void EncodingHashGrid::fillParameterConstant(const std::string& constantName, const ckl::KernelFunction& function,
-    CUstream stream)
+int EncodingHashGrid::fillParameterMemory(char* dst, int dstSize)
 {
-    static std::vector<char> MEMORY(1024 * 1024);
 #define PADDING 8
 
     size_t index = 0;
@@ -216,8 +214,8 @@ void EncodingHashGrid::fillParameterConstant(const std::string& constantName, co
         //add padding
         index = kernel::roundUpPower2(index, padding);
         if (len > 0) {
-            assert(index + len < MEMORY.size());
-            memcpy(MEMORY.data() + index, mem, len);
+            assert(index + len < dstSize);
+            memcpy(dst + index, mem, len);
             index += len;
         }
     };
@@ -227,11 +225,21 @@ void EncodingHashGrid::fillParameterConstant(const std::string& constantName, co
     addWithPadding(&parametersForward, sizeof(float*));
     addWithPadding(&parametersBackward, sizeof(float*));
 
-    for (size_t i=0; i<layers_.size(); ++i)
-        addWithPadding(&layers_[i], sizeof(kernel::HashGridLayerConfig), i==0 ? PADDING : 1);
+    for (size_t i = 0; i < layers_.size(); ++i)
+        addWithPadding(&layers_[i], sizeof(kernel::HashGridLayerConfig), i == 0 ? PADDING : 1);
 
     addWithPadding(boundingBoxMin_.data(), dimension_ * sizeof(float));
     addWithPadding(boundingBoxInvSize_.data(), dimension_ * sizeof(float));
+
+    return index;
+}
+
+void EncodingHashGrid::fillParameterConstant(const std::string& constantName, const ckl::KernelFunction& function,
+                                             CUstream stream)
+{
+    static std::vector<char> MEMORY(1024 * 1024);
+
+    int index = fillParameterMemory(MEMORY.data(), MEMORY.size());
 
     CUdeviceptr dst = function.constant(constantName);
     CKL_SAFE_CALL(cuMemcpyHtoDAsync(dst, MEMORY.data(), index, stream));

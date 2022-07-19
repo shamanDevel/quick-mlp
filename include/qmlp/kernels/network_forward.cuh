@@ -58,7 +58,7 @@ __global__ void NetworkKernelInferenceAndForward(
         //encodings
         if (valid) {
             auto encodingInput = inputs[index];
-            half* encodingOutput = intermediateResultsThread;
+            WrappedArray<half> encodingOutput{ intermediateResultsThread, MAX_CHANNELS};
             //called e.g. EncodingIdentity::forward(encodingInput, encodingOutput)
 
             //CODE GENERATION [[

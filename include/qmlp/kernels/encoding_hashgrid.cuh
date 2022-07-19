@@ -253,6 +253,8 @@ struct EncodingHashGrid
 {
     typedef HashGridConfig<NumDimensions, NumLayers> param_t;
 
+    static constexpr int NumOutputs = NumFeaturesPerLayer * (CombinationMode == LayerCombinationMode::CONCAT ? NumLayers : 1);
+
     /**
      * \brief Computes the forward code for a single layer
      * \tparam Add true iff the features should be added to the output, false if it should be assigned
@@ -264,8 +266,10 @@ struct EncodingHashGrid
     template<bool Add, typename O>
     static __device__ void forwardLayer(
         const fposition_t<NumDimensions>& position, const HashGridLayerConfig& cfg,
-        const float* __restrict__ parameters, O* output)
+        const float* __restrict__ parameters, O& output)
     {
+        typedef typename O::ValueType O_t;
+
         //get corner positions and interpolation values
         fposition_t<NumDimensions> fpos;
         iposition_t<NumDimensions> iposL, iposH;
@@ -291,7 +295,7 @@ struct EncodingHashGrid
         {
 #pragma unroll
             for (int i = 0; i < NumFeaturesPerLayer; ++i) {
-                output[i] += fcast<O>(feature[i]);
+                output[i] += fcast<O_t>(feature[i]);
             }
         }
         else
@@ -299,13 +303,13 @@ struct EncodingHashGrid
 #pragma unroll
             for (int i = 0; i < NumFeaturesPerLayer; ++i) {
                 //printf("[%03d] feature %d = %.4f\n", threadIdx.x, i, feature[i]);
-                output[i] = fcast<O>(feature[i]);
+                output[i] = fcast<O_t>(feature[i]);
             }
         }
     }
 
     template<typename I, typename O>
-    static __device__ void forward(const I input, O* output, const param_t& params)
+    static __device__ void forward(const I input, O& output, const param_t& params)
     {
         //fetch position and transform to unit cube
         fposition_t<NumDimensions> position;

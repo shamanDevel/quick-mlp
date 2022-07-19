@@ -62,6 +62,8 @@ class StaticArray
     T data_[N];
 
 public:
+    typedef T ValueType;
+
     constexpr __forceinline__ __host__ __device__ StaticArray(){}
     constexpr __host__ __device__ StaticArray(zero_initialization_tag /*tag*/)
         : data_{ 0 }
@@ -91,7 +93,50 @@ public:
             if (i != d) result *= data_[i];
         return result;
     }
+
+    constexpr __forceinline__ __host__ __device__ StaticArray<T, N>& operator+=(const StaticArray<T, N>& rhs)
+    {
+#pragma unroll
+        for (int i = 0; i < N; ++i)
+            data_[i] += rhs[i];
+        return *this;
+    }
+    friend constexpr __forceinline__ __host__ __device__ StaticArray<T, N> operator+(
+        StaticArray<T, N> lhs, const StaticArray<T, N>& rhs)
+    {
+        lhs += rhs;
+        return lhs;
+    }
+
+    constexpr __forceinline__ __host__ __device__ StaticArray<T, N>& operator*=(const T& rhs)
+    {
+#pragma unroll
+        for (int i = 0; i < N; ++i)
+            data_[i] *= rhs;
+        return *this;
+    }
+    friend constexpr __forceinline__ __host__ __device__ StaticArray<T, N> operator*(
+        StaticArray<T, N> lhs, const T& rhs)
+    {
+        lhs *= rhs;
+        return lhs;
+    }
 };
+
+/**
+ * Computes (x*y)+z
+ */
+template<typename T, int N>
+constexpr __forceinline__ __host__ __device__
+StaticArray<T, N> fma(T x, const StaticArray<T, N>& y, const StaticArray<T, N>& z)
+{
+    StaticArray<T, N> w;
+#pragma unroll
+    for (int i=0; i<N; ++i)
+    {
+        w[i] = fma(x, y[i], z[i]);
+    }
+}
 
 #if 0
 template<int N>
@@ -108,5 +153,41 @@ public:
     {}
 };
 #endif
+
+template<typename T>
+class WrappedArray
+{
+    T* data_;
+#ifndef NDEBUG
+    int size_;
+#endif
+public:
+    typedef T ValueType;
+
+    constexpr __forceinline__ __host__ __device__  WrappedArray() = default;
+    constexpr __forceinline__ __host__ __device__  WrappedArray(T* data, int size)
+        : data_(data)
+#ifndef NDEBUG
+        , size_(size)
+#endif
+    {}
+
+    constexpr __forceinline__ __host__ __device__ const T& operator[](int i) const
+    {
+#ifndef NDEBUG
+        assert(i >= 0 && i < size_);
+#endif
+        return data_[i];
+    }
+    constexpr __forceinline__ __host__ __device__ T& operator[](int i)
+    {
+#ifndef NDEBUG
+        assert(i >= 0 && i < size_);
+#endif
+        return data_[i];
+    }
+
+};
+
 
 QUICKMLP_KERNEL_NAMESPACE_END

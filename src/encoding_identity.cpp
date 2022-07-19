@@ -25,7 +25,7 @@ nlohmann::json EncodingIdentity::toJson() const
 
 std::string EncodingIdentity::ID()
 {
-    return "identity";
+    return "Identity";
 }
 
 std::string EncodingIdentity::id() const

@@ -109,6 +109,7 @@ set(QUICKMLP_HEADERS
     include/qmlp/iencoding.h
     include/qmlp/encoding_identity.h
     include/qmlp/encoding_hashgrid.h
+    include/qmlp/encoding_line_integration.h
     include/qmlp/fused_network.h
     include/qmlp/qmlp.h
     include/qmlp/errors.h
@@ -125,6 +126,8 @@ set(QUICKMLP_RESOURCES
     include/qmlp/kernels/encoding_identity.cuh
     include/qmlp/kernels/encoding_hashgrid.cuh
     include/qmlp/kernels/encoding_hashgrid_config.cuh
+    include/qmlp/kernels/encoding_line_integration.cuh
+    include/qmlp/kernels/encoding_line_integration_config.cuh
     include/qmlp/kernels/layer.cuh
     include/qmlp/kernels/network_forward.cuh
     include/qmlp/kernels/network_backward.cuh
@@ -139,6 +142,7 @@ set(QUICKMLP_SOURCES
     src/tensor.cpp
     src/encoding_identity.cpp
     src/encoding_hashgrid.cpp
+    src/encoding_line_integration.cpp
     src/iencoding.cpp
     src/fused_network.cpp
     )
@@ -222,6 +226,7 @@ if(NOT TARGET qmlp)
         CXX_STANDARD_REQUIRED YES
         CXX_EXTENSIONS NO
     )
+  source_group("CUDA" REGULAR_EXPRESSION ".*\.cuh")
 
   target_include_directories(
     qmlp ${qmlp_system} PUBLIC ${qmlp_INCLUDE_DIR})

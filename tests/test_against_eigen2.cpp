@@ -43,7 +43,7 @@ TEMPLATE_TEST_CASE_SIG("test-against-eigen-2", "[eigen]",
         }) },
         {"encodings", nlohmann::json::array({
             nlohmann::json::object({
-                {"id", "identity"},
+                {"id", "Identity"},
                 {"start_in", 0},
                 {"n_in", Channels0}
             })

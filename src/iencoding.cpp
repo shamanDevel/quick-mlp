@@ -2,6 +2,7 @@
 
 #include <qmlp/encoding_identity.h>
 #include <qmlp/encoding_hashgrid.h>
+#include <qmlp/encoding_line_integration.h>
 
 #include "qmlp/qmlp.h"
 #include "qmlp/kernels/tensor.cuh"
@@ -203,6 +204,10 @@ EncodingFactory::EncodingFactory()
     encodings_[EncodingHashGrid::ID()] = [](const nlohmann::json& cfg)
     {
         return std::make_shared<EncodingHashGrid>(cfg);
+    };
+    encodings_[EncodingLineIntegration::ID()] = [](const nlohmann::json& cfg)
+    {
+        return std::make_shared<EncodingLineIntegration>(cfg);
     };
     //more encodings here
 }

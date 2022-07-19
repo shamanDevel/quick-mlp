@@ -32,7 +32,7 @@ __global__ void EncodingForwardKernel(
     KERNEL_1D_LOOP(index, virtual_size)
     {
         const auto encodingInput = inputs[index];
-        auto encodingOutput = outputs[index].data(); //assume stride of C = 1
+        auto encodingOutput = outputs[index];
 
         //CODE GENERATION [[
         $$CALL_ENCODINGS_FORWARD$$

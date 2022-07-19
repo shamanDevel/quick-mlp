@@ -30,7 +30,8 @@ QUICKMLP_NAMESPACE_BEGIN
  * </code>
  * The input type provides a subscript operator <code>float operator[](size_t idx)</code>
  *  to fetch the input at the given index.
- * The pointer to the output can be of type 'float' or 'half'.
+ * The output is any object with an <code>T operator[0](int idx)</code> and a typedef \c ValueType
+ * specifying the expected datatype (float or half). Example: TensorAccessor or StaticArray
  */
 class IEncoding
 {
@@ -138,6 +139,51 @@ private:
     std::optional<ckl::KernelFunction> adjointKernel_[AdjointMode::ALL_GRADIENTS+1];
 };
 typedef std::shared_ptr<IEncoding> IEncoding_ptr;
+
+
+/**
+ * Specialization of IEncoding for volumetric encodings.
+ * Volumetric Encodings can be included as child encodings in other models like EncodingLineIntegration.
+ * To support this, a few extra methods need to be provided.
+ *
+ * The kernel code must provide a
+ * <code>static constexpr int NumOutputs</code>
+ * together with the functions specified in IEncoding.
+ */
+class IVolumetricEncoding : public IEncoding
+{
+public:
+    // Number of dimensions (1D to 6D typically)
+    [[nodiscard]] virtual int ndim() const = 0;
+
+    typedef std::vector<float> BoundingBoxVector_t;
+
+    /**
+     * Returns the min point of the bounding box.
+     * The returned vector has a length of \ref ndim().
+     */
+    [[nodiscard]] virtual BoundingBoxVector_t boundingBoxMin() const = 0;
+
+    /**
+     * Returns the side length of the bounding box.
+     * The returned vector has a length of \ref ndim().
+     */
+    [[nodiscard]] virtual BoundingBoxVector_t boundingBoxSize() const = 0;
+
+    /**
+     * Returns the inverse side length of the bounding box.
+     * The returned vector has a length of \ref ndim().
+     */
+    [[nodiscard]] virtual BoundingBoxVector_t boundingBoxInvSize() const = 0;
+
+    /**
+     * Fills the parameter data (see \ref fillParameterConstant()) into
+     * the memory \c dst with maximal capacity of \c dstSize bytes.
+     * The number of bytes written is returned
+     */
+    [[nodiscard]] virtual int fillParameterMemory(char* dst, int dstSize) = 0;
+};
+
 
 class EncodingFactory
 {

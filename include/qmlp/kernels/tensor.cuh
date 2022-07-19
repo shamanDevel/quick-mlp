@@ -42,6 +42,7 @@ namespace qmlp {
         class TensorAccessorBase {
         public:
             typedef typename PtrTraits<T>::PtrType PtrType;
+            typedef T ValueType;
 
             __host__ __device__ TensorAccessorBase(){} //uninitialized
             __host__ __device__ TensorAccessorBase(

@@ -150,7 +150,7 @@ def _validate_encoding(code: str, baseline: Optional[torch.nn.Module], channels_
 def test_identity():
     cfg = """
 {
-"id": "identity",
+"id": "Identity",
 "start_in": 0,
 "n_in": 5
 }
@@ -168,7 +168,7 @@ def test_densegrid_1d():
 
     cfg = f"""
 {{
-"id": "hashgrid",
+"id": "HashGrid",
 "start_in": 0,
 "n_in": 1,
 "n_levels": 1,
@@ -202,7 +202,7 @@ def test_densegrid_2d():
 
     cfg = f"""
 {{
-"id": "hashgrid",
+"id": "HashGrid",
 "start_in": 0,
 "n_in": 2,
 "n_levels": 1,

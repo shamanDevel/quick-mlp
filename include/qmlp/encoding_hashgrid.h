@@ -19,7 +19,7 @@ typedef kernel::LayerCombinationMode LayerCombinationMode;
  * The input coordinates are first transformed to the unit (hyper-) cube
  * before hashing. See boundingBoxMin and boundingBoxMax
  */
-class EncodingHashGrid : public IEncoding
+class EncodingHashGrid : public IVolumetricEncoding
 {
 
 private:
@@ -61,8 +61,9 @@ public:
     [[nodiscard]] Tensor::Precision parameterPrecision(Tensor::Usage usage) const override;
     [[nodiscard]] int parameterCount() const override;
     void setParameter(const Tensor& tensor, Tensor::Usage usage) override;
+    [[nodiscard]] int fillParameterMemory(char* dst, int dstSize) override;
     void fillParameterConstant(const std::string& constantName, const ckl::KernelFunction& function,
-        CUstream stream) override;
+                               CUstream stream) override;
     void zeroGradients() override;
 
     [[nodiscard]] int startChannel() const
@@ -70,7 +71,7 @@ public:
         return startChannel_;
     }
 
-    [[nodiscard]] int dimension() const
+    [[nodiscard]] int ndim() const override
     {
         return dimension_;
     }
@@ -110,14 +111,19 @@ public:
         return combinationMode_;
     }
 
-    [[nodiscard]] std::vector<float> boundingBoxMin() const
+    [[nodiscard]] std::vector<float> boundingBoxMin() const override
     {
         return boundingBoxMin_;
     }
 
-    [[nodiscard]] std::vector<float> boundingBoxSize() const
+    [[nodiscard]] std::vector<float> boundingBoxSize() const override
     {
         return boundingBoxSize_;
+    }
+
+    [[nodiscard]] std::vector<float> boundingBoxInvSize() const override
+    {
+        return boundingBoxInvSize_;
     }
 };
 
