@@ -113,6 +113,13 @@ public:
     virtual void forward(const Tensor& input, Tensor& output, CUstream stream,
         const std::optional<const Tensor>& parametersForward);
 
+    enum AdjointMode
+    {
+        INPUT_GRADIENTS = 0x1,
+        PARAM_GRADIENTS = 0x2,
+        ALL_GRADIENTS = INPUT_GRADIENTS | PARAM_GRADIENTS
+    };
+
     /**
      * \brief Adjoint propagation through the activation function.
      * The tensors must be of half precision.
@@ -123,11 +130,12 @@ public:
      * \param stream the CUDA stream where the kernel is enqueued.
      */
     virtual void adjoint(const Tensor& input, const Tensor& adjOutput, Tensor& adjInput, CUstream stream,
-        const std::optional<const Tensor>& parametersForward, const std::optional<const Tensor>& parametersGradients);
+        const std::optional<const Tensor>& parametersForward, const std::optional<const Tensor>& parametersGradients,
+        int adjointMode = AdjointMode::ALL_GRADIENTS);
 
 private:
     std::optional<ckl::KernelFunction> forwardKernel_;
-    std::optional<ckl::KernelFunction> adjointKernel_;
+    std::optional<ckl::KernelFunction> adjointKernel_[AdjointMode::ALL_GRADIENTS+1];
 };
 typedef std::shared_ptr<IEncoding> IEncoding_ptr;
 

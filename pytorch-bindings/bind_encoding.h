@@ -65,6 +65,9 @@ public:
     std::tuple<torch::Tensor, torch::Tensor> adjointWithParameter(
         const torch::Tensor& input, const torch::Tensor& parameterForward, 
         const torch::Tensor& adjOutput) const;
+    std::tuple<torch::Tensor, torch::Tensor> adjointWithParameterAndFlags(
+        const torch::Tensor& input, const torch::Tensor& parameterForward,
+        const torch::Tensor& adjOutput, int flags) const;
 
     //with autograd support
     static torch::Tensor forward(c10::intrusive_ptr<EncodingBindings> self, const torch::Tensor& input);

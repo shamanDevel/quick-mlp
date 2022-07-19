@@ -53,13 +53,19 @@ torch::Tensor EncodingBindings::adjoint(const torch::Tensor& input, const torch:
     auto adjOutputWrapped = wrap(adjOutput);
     auto adjInputWrapped = wrap(adjInput);
     CUstream stream = c10::cuda::getCurrentCUDAStream();
-    a_->adjoint(inputWrapped, adjOutputWrapped, adjInputWrapped, stream, {}, {});
+    a_->adjoint(inputWrapped, adjOutputWrapped, adjInputWrapped, stream, 
+        {}, {}, qmlp::IEncoding::ALL_GRADIENTS);
 
     return adjInput;
 }
 
 std::tuple<torch::Tensor, torch::Tensor> EncodingBindings::adjointWithParameter(const torch::Tensor& input,
     const torch::Tensor& parameterForward, const torch::Tensor& adjOutput) const
+{
+    return adjointWithParameterAndFlags(input, parameterForward, adjOutput, qmlp::IEncoding::ALL_GRADIENTS);
+}
+std::tuple<torch::Tensor, torch::Tensor> EncodingBindings::adjointWithParameterAndFlags(const torch::Tensor & input,
+    const torch::Tensor & parameterForward, const torch::Tensor & adjOutput, int flags) const
 {
     TORCH_CHECK(hasParameters(), "Encoding doesn't have parameters, call the variation of 'adjoint' without parameters");
     torch::Tensor adjInput = torch::zeros_like(input);
@@ -72,10 +78,9 @@ std::tuple<torch::Tensor, torch::Tensor> EncodingBindings::adjointWithParameter(
     auto adjParamWrapped = wrap(adjParam);
     CUstream stream = c10::cuda::getCurrentCUDAStream();
     a_->adjoint(inputWrapped, adjOutputWrapped, adjInputWrapped, stream,
-        paramWrapped, adjParamWrapped);
+        paramWrapped, adjParamWrapped, flags);
 
     return { adjInput, adjParam };
-
 }
 
 torch::Tensor EncodingBindings::forward(c10::intrusive_ptr<EncodingBindings> self, const torch::Tensor& input)
@@ -121,6 +126,8 @@ torch::autograd::variable_list EncodingAutogradFunctionWithParameter::forward(
 {
     ctx->save_for_backward({ input, parameter });
     ctx->saved_data["activ"] = activ;
+    ctx->saved_data["hasInputGradients"] = input.requires_grad();
+    ctx->saved_data["hasParamGradients"] = parameter.requires_grad();
 
     torch::Tensor output = activ->inferenceWithParameter(input, parameter);
     return { output };
@@ -133,9 +140,14 @@ torch::autograd::tensor_list EncodingAutogradFunctionWithParameter::backward(tor
     torch::Tensor input = saved[0];
     torch::Tensor parameter = saved[1];
     EncodingBindings_ptr activ = ctx->saved_data["activ"].toCustomClass<EncodingBindings>();
+    bool hasInputGradients = ctx->saved_data["hasInputGradients"].toBool();
+    bool hasParamGradients = ctx->saved_data["hasParamGradients"].toBool();
+    int flags =
+        (hasInputGradients ? QUICKMLP_NAMESPACE::IEncoding::INPUT_GRADIENTS : 0) |
+        (hasParamGradients ? QUICKMLP_NAMESPACE::IEncoding::PARAM_GRADIENTS : 0);
 
     torch::Tensor gradOutput = grad_outputs[0];
-    auto grad = activ->adjointWithParameter(input, parameter, gradOutput);
+    auto grad = activ->adjointWithParameterAndFlags(input, parameter, gradOutput, flags);
     return { std::get<0>(grad), std::get<1>(grad), torch::Tensor() };
 }
 

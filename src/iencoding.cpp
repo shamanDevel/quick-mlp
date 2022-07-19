@@ -94,7 +94,8 @@ void IEncoding::forward(const Tensor& input, Tensor& output, CUstream stream,
 }
 
 void IEncoding::adjoint(const Tensor& input, const Tensor& adjOutput, Tensor& adjInput, CUstream stream,
-    const std::optional<const Tensor>& parametersForward, const std::optional<const Tensor>& parametersGradients)
+    const std::optional<const Tensor>& parametersForward, const std::optional<const Tensor>& parametersGradients,
+    int adjointMode)
 {
     //Check shapes
     CHECK_DIM(input, 2);
@@ -108,10 +109,11 @@ void IEncoding::adjoint(const Tensor& input, const Tensor& adjOutput, Tensor& ad
     CHECK_ERROR(input.size(1) > maxInputChannel());
     CHECK_ERROR(adjOutput.size(1) >= numOutputChannels());
     CHECK_ERROR(adjInput.size(1) == input.size(1));
+    CHECK_ERROR(adjointMode >= 1 && adjointMode <= ALL_GRADIENTS, "Illegal adjoint mode");
     long long numel = input.size(0);
 
     static const std::string constantName = "cEncoding";
-    if (!adjointKernel_.has_value()) {
+    if (!adjointKernel_[adjointMode].has_value()) {
         //generate code
         auto kl = QuickMLP::Instance().kernelLoader();
         std::string codeTemplate = kl->findFile("qmlp/kernels/encoding_kernels.cuh").value();
@@ -130,10 +132,14 @@ void IEncoding::adjoint(const Tensor& input, const Tensor& adjOutput, Tensor& ad
         replaceAll(codeTemplate, "$$INCLUDES$$", encodingIncludes.str());
         replaceAll(codeTemplate, "$$ENCODING_CONSTANTS$$", encodingConstants.str());
 
-        //call encodings
+        //call encodings, enable only those derivatives that are needed
         std::stringstream callEncodings;
-        //TODO: enable only those derivatives that are needed
-        callEncodings << qualifiedName() << "::adjoint<true, true>(encodingInput, encodingAdjOutput, encodingAdjInput";
+        bool hasInputGradients = adjointMode & INPUT_GRADIENTS;
+        bool hasParamGradients = ((adjointMode & PARAM_GRADIENTS) > 0 ? true : false) && hasParameters();
+        callEncodings << qualifiedName() << "::adjoint<" <<
+            (hasInputGradients ? "true" : "false") << ", " <<
+            (hasParamGradients ? "true" : "false") << ">" <<
+            "(encodingInput, encodingAdjOutput, encodingAdjInput";
         if (hasParameters())
         {
             callEncodings << ", " << constantName;
@@ -150,9 +156,9 @@ void IEncoding::adjoint(const Tensor& input, const Tensor& adjOutput, Tensor& ad
             constantNames,
             compileFlags).value();
 
-        adjointKernel_ = fun;
+        adjointKernel_[adjointMode] = fun;
     }
-    auto& fun = adjointKernel_.value();
+    auto& fun = adjointKernel_[adjointMode].value();
 
     //fill constants of the encodings
     if (hasParameters())

@@ -112,11 +112,11 @@ def _validate_encoding(code: str, baseline: Optional[torch.nn.Module], channels_
 
     # GRAD TEST
     def wrap_input(x, params=parameters, fun=enc):
-        return fun(x.to(dtype=torch.float), params).to(dtype=torch.double)
+        return fun(x.to(dtype=torch.float), params.detach() if params is not None else None).to(dtype=torch.double)
     def wrap_params(p, i=input, fun=enc):
-        return fun(i, p.to(dtype=torch.float)).to(dtype=torch.double)
+        return fun(i.detach(), p.to(dtype=torch.float)).to(dtype=torch.double)
 
-    input_double = torch.randn((N, channels_in), dtype=torch.double, device=torch.device("cuda"), requires_grad=True)
+    input_double = input.detach().to(torch.double).requires_grad_(True)
     param_double = torch.randn(parameters.shape, dtype=torch.double, device=torch.device("cuda"), requires_grad=True) if parameters is not None else None
     torch.autograd.gradcheck(wrap_input, input_double, eps=1e-1, atol=1e-1)
     if enc.has_parameters():
