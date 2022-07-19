@@ -4,6 +4,7 @@
 #include <magic_enum.hpp>
 #include <qmlp/kernels/encoding_hashgrid_config.cuh>
 #include <qmlp/kernels/loops.cuh>
+#include <qmlp/qmlp.h>
 
 QUICKMLP_KERNEL_NAMESPACE_BEGIN
 
@@ -78,6 +79,10 @@ EncodingHashGrid::EncodingHashGrid(int start_channel, int dimension, int num_lev
                 numParameters_, resolution, 0, false
             });
             numParameters_ += static_cast<int>(requiredCells) * num_features_per_level;
+            if (QuickMLP::Instance().isDebugMode())
+            {
+                std::cout << "HashGrid layer " << l << " is dense. Resolution=" << resolution << std::endl;
+            }
         }
         else
         {
@@ -86,6 +91,10 @@ EncodingHashGrid::EncodingHashGrid(int start_channel, int dimension, int num_lev
                 numParameters_, resolution, hashmapSize_, true
                 });
             numParameters_ += hashmapSize_ * num_features_per_level;
+            if (QuickMLP::Instance().isDebugMode())
+            {
+                std::cout << "HashGrid layer " << l << " is sparse and will be hashed. Resolution=" << resolution << ", hashmap size=" << hashmapSize_ << std::endl;
+            }
         }
     }
 }

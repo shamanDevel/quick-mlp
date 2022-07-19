@@ -34,6 +34,8 @@ public:
      */
     void setDebugMode(bool enable);
 
+    [[nodiscard]] bool isDebugMode() const { return enableDebugMode_; }
+
     /**
      * Returns the compile flags for CKL.
      */
