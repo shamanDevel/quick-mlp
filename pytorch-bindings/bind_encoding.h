@@ -31,6 +31,7 @@ public:
     [[nodiscard]] int64_t maxInputChannel() const { return a_->maxInputChannel(); }
     [[nodiscard]] int64_t numOutputChannels() const { return a_->numOutputChannels(); }
     [[nodiscard]] int64_t hasParameters() const { return a_->hasParameters() ? 1 : 0; }
+    [[nodiscard]] std::string toJson() const;
     /**
      * Creates an empty parameter fit for storing the inference parameters.
      * Note that the memory is uninitialized!

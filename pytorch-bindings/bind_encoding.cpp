@@ -16,6 +16,11 @@ static torch::Tensor createOutputTensor(const torch::Tensor& input, int channels
     return t;
 }
 
+std::string EncodingBindings::toJson() const
+{
+    return a_->toJson().dump();
+}
+
 torch::Tensor EncodingBindings::inference(const torch::Tensor& input) const
 {
     TORCH_CHECK(!hasParameters(), "Encoding has parameters, call the variation of 'inference' with parameters");
@@ -158,6 +163,7 @@ void bindEncoding(torch::Library& m)
         .def("max_input_channel", &EncodingBindings::maxInputChannel)
         .def("num_output_channels", &EncodingBindings::numOutputChannels)
         .def("has_parameters", &EncodingBindings::hasParameters)
+        .def("to_json", &EncodingBindings::toJson)
         .def("create_inference_parameters", &EncodingBindings::createInferenceParameters)
         .def("create_gradient_parameters", &EncodingBindings::createGradientParameters)
         .def("inference", &EncodingBindings::inference)
