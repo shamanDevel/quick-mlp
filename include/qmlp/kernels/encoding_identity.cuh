@@ -13,12 +13,14 @@ template<int StartChannel, int NumChannels>
 struct EncodingIdentity
 {
     template<typename I, typename O>
-    static __device__ void forward(const I input, O* output)
+    static __device__ void forward(const I input, O& output)
     {
+        typedef typename O::ValueType O_t;
+
 #pragma unroll
         for (int i=0; i<NumChannels; ++i)
         {
-            output[i] = fcast<O>(input[i + StartChannel]);
+            output[i] = fcast<O_t>(input[i + StartChannel]);
         }
     }
 

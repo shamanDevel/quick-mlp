@@ -188,6 +188,18 @@ public:
         return data_[i];
     }
 
+    /**
+     * Pointer arithmetic
+     */
+    constexpr __forceinline__ __host__ __device__ WrappedArray<T> operator+(int i) const
+    {
+#ifndef NDEBUG
+        assert(i < size_);
+        return WrappedArray<T>(data_ + i, size_ - i);
+#else
+        return WrappedArray<T>(data_ + i, 0);
+#endif
+    }
 };
 
 

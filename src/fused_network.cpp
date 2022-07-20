@@ -373,7 +373,8 @@ void FusedNetwork::compileInferenceKernel()
     for (int encodingIdx = 0; encodingIdx < encodings_.size(); ++encodingIdx)
     {
         auto e = encodings_[encodingIdx];
-        callEncodings << e->qualifiedName() << "::forward(encodingInput, encodingOutput + " <<
+        callEncodings << "auto encodingOutput" << encodingOffset << " = encodingOutput + " << encodingOffset << ";\n";
+        callEncodings << e->qualifiedName() << "::forward(encodingInput, encodingOutput" <<
             encodingOffset;
         encodingOffset += e->numOutputChannels();
         if (e->hasParameters())
@@ -522,7 +523,8 @@ void FusedNetwork::compileForwardKernel()
     for (int encodingIdx = 0; encodingIdx < encodings_.size(); ++encodingIdx)
     {
         auto e = encodings_[encodingIdx];
-        callEncodings << e->qualifiedName() << "::forward(encodingInput, encodingOutput + " <<
+        callEncodings << "auto encodingOutput" << encodingOffset << " = encodingOutput + " << encodingOffset << ";\n";
+        callEncodings << e->qualifiedName() << "::forward(encodingInput, encodingOutput" <<
             encodingOffset;
         encodingOffset += e->numOutputChannels();
         if (e->hasParameters())
