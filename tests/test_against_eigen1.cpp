@@ -182,9 +182,9 @@ TEMPLATE_TEST_CASE_SIG("test-against-eigen-1", "[eigen]",
     {
         int tmpSize = adjointWithFlags(qmlp::FusedNetwork::GRADIENTS_NETWORK_WEIGHTS);
         INFO("size of temporary memory: " << tmpSize);
-        //COMPARE_TENSOR_AND_MATRIX(
-        //    network->networkParameter(0, false, Tensor::GRADIENTS),
-        //    adjWeights0Eigen);
+        COMPARE_TENSOR_AND_MATRIX(
+            network->networkParameter(0, false, Tensor::GRADIENTS),
+            adjWeights0Eigen);
         //if constexpr (Bias1)
         //{
         //    COMPARE_TENSOR_AND_VECTOR(

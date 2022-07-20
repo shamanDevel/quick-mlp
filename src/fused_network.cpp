@@ -814,7 +814,8 @@ void FusedNetwork::compileBackwardKernel(int flags)
         for (int encodingIdx = 0; encodingIdx < encodings_.size(); ++encodingIdx)
         {
             auto e = encodings_[encodingIdx];
-            callEncodings << e->qualifiedName() << "::forward(encodingInput, encodingOutput + " <<
+            callEncodings << "auto encodingOutput" << encodingOffset << " = encodingOutput + " << encodingOffset << ";\n";
+            callEncodings << e->qualifiedName() << "::forward(encodingInput, encodingOutput" <<
                 encodingOffset;
             encodingOffset += e->numOutputChannels();
             if (e->hasParameters())
@@ -1035,6 +1036,33 @@ void FusedNetwork::adjoint(const Tensor& input, const Tensor& adjOutput, Adjoint
             else
             {
                 auto bIn = inputAcc;
+
+                //TEST
+                std::cout << "bIn, shape=" << bIn.size(0) << " x " << bIn.size(1) << std::endl;
+                std::vector<float> dataF(input.numel());
+                cudaMemcpy(dataF.data(), input.rawPtr(), sizeof(float) * input.numel(), cudaMemcpyDeviceToHost);
+                printf("     ");
+                for (int j = 0; j < bIn.size(1); ++j) { printf("  %03d  ", j); } printf("\n");
+                for (int i=0; i<bIn.size(0); ++i)
+                {
+                    printf("%03d  ", i);
+                    for (int j = 0; j < bIn.size(1); ++j) { printf(" %+.2f ", dataF[input.idx({i,j})]); }
+                    printf("\n");
+                }
+
+                auto aInTensor = Tensor(aIn, Tensor::HALF, { ls.channelsOut, numel }, { 1, ls.channelsOut });
+                std::cout << "aIn, shape=" << aInTensor.size(0) << " x " << aInTensor.size(1) << std::endl;
+                std::vector<half> dataH(aInTensor.numel());
+                cudaMemcpy(dataH.data(), aInTensor.rawPtr(), sizeof(half)*aInTensor.numel(), cudaMemcpyDeviceToHost);
+                printf("     ");
+                for (int j = 0; j < aInTensor.size(1); ++j) { printf("  %03d  ", j); } printf("\n");
+                for (int i = 0; i < aInTensor.size(0); ++i)
+                {
+                    printf("%03d  ", i);
+                    for (int j = 0; j < aInTensor.size(1); ++j) { printf(" %+.2f ", __half2float(dataH[aInTensor.idx({ i,j })])); }
+                    printf("\n");
+                }
+
                 ck.fun.call(gridSize, ck.blockSize, ck.sharedMemorySize, ali.stream,
                     numel, outAdjWeights, aIn, bIn);
             }

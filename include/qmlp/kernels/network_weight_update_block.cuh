@@ -63,6 +63,7 @@ struct OHatTmpLoader
     __device__ static void loadToShared(half* tmpShared, const input_t srcGlobal, int warpID, int numel)
     {
         //always load a full warp of 32 values.
+        assert(numel >= 32);
         //The network evaluation (forward+backward) pads half-filled last warps with zeros
 
         //CUDA can read 4 bytes at once -> use half2
@@ -70,7 +71,7 @@ struct OHatTmpLoader
         half2* dst = reinterpret_cast<half2*>(tmpShared);
 
         //TEST
-        //printLayer(0, threadIdx.x, srcGlobal + (warpID * 32 * M) + (M * (threadIdx.x % 32)), M);
+        printLayer(0, threadIdx.x, srcGlobal + (warpID * 32 * M) + (M * (threadIdx.x % 32)), M);
 
         __syncwarp();
         //now load 32*M entries, linear in memory. Layout does not matter here
@@ -79,7 +80,7 @@ struct OHatTmpLoader
 #pragma unroll
         for (int cout = 0; cout < M2; ++cout)
         {
-            //dst[32 * cout + lineID] = src[32 * cout + lineID];
+            dst[32 * cout + lineID] = src[32 * cout + lineID];
         }
         __syncwarp();
     }
@@ -93,7 +94,8 @@ struct OHatTmpLoader
         //TEST
         __syncwarp();
         const int lineID = threadIdx.x % 32;
-        printLayerBinary(0, threadIdx.x, tmpShared + (M * lineID), M);
+        //printLayerBinary(10, threadIdx.x, tmpShared + (M * lineID), M);
+        printLayer(10, threadIdx.x, tmpShared + (M * lineID), M);
 
 #pragma unroll
         for (int cout = 0; cout < MDiv16; ++cout)
@@ -223,13 +225,11 @@ struct InputLoader
         {
             const int index = 32 * warpID + lineID;
             auto encodingInput = srcGlobal[index];
-            half* encodingOutput = intermediateResultsThread;
+            WrappedArray<half> encodingOutput{ intermediateResultsThread, CHANNELS_IN };
 
-#if 0
             //CODE GENERATION [[
 $$CALL_ENCODINGS$$
             //]] CODE GENERATIION
-#endif
 
             //padding
             for (int cin = INPUT_PAD_START; cin < CHANNELS_IN; ++cin)
@@ -254,7 +254,7 @@ $$CALL_ENCODINGS$$
     __device__ static void loadToFragment(fragment_t dst[2][NDiv16], const half* tmpShared)
     {
         //TEST
-        printLayer(1, threadIdx.x, tmpShared + (N*(threadIdx.x%32)), N);
+        printLayer(11, threadIdx.x, tmpShared + (N*(threadIdx.x%32)), N);
 
         //note: load as row-major for transposing!
         for (int cin = 0; cin < NDiv16; ++cin)
@@ -334,21 +334,21 @@ __global__ void WeightUpdateSingleBlockKernel(
 
     extern __shared__ char sIntermediate[];
 
-    //TEST
-    half* dummyShared = reinterpret_cast<half*>(sIntermediate);
-    int Ndummy = (ALoader::SharedMemoryHalf + BLoader::SharedMemoryHalf) * numWarps;
-    half dummyValue = __float2half(-5.0f);
-    if (threadIdx.x==0)
-    {
-        printf("num warps: %d, fill %d half entries\n", numWarps, Ndummy);
-        printf("Fill addresses from 0x%llx to 0x%llx\n",
-            reinterpret_cast<long long>(sIntermediate), reinterpret_cast<long long>(sIntermediate + Ndummy + 1));
-        for (int i = 0; i < Ndummy; ++i) dummyShared[i] = dummyValue;
-    }
-    int pred = 1;
-    int count = __syncthreads_count(pred);
-    __threadfence();
-    if (threadIdx.x == 0) printf("Syncthreads count: %d\n", count);
+    ////TEST
+    //half* dummyShared = reinterpret_cast<half*>(sIntermediate);
+    //int Ndummy = (ALoader::SharedMemoryHalf + BLoader::SharedMemoryHalf) * numWarps;
+    //half dummyValue = __float2half(-5.0f);
+    //if (threadIdx.x==0)
+    //{
+    //    printf("num warps: %d, fill %d half entries\n", numWarps, Ndummy);
+    //    printf("Fill addresses from 0x%llx to 0x%llx\n",
+    //        reinterpret_cast<long long>(sIntermediate), reinterpret_cast<long long>(sIntermediate + Ndummy + 1));
+    //    for (int i = 0; i < Ndummy; ++i) dummyShared[i] = dummyValue;
+    //}
+    //int pred = 1;
+    //int count = __syncthreads_count(pred);
+    //__threadfence();
+    //if (threadIdx.x == 0) printf("Syncthreads count: %d\n", count);
 
     //printf("[%03d] warpID=%d, lineID=%02d, SharedBytesPerWarp_Input=%d\n",
     //    threadIdx.x, warpID, lineID, SharedBytesPerWarp_Input);
@@ -363,8 +363,8 @@ __global__ void WeightUpdateSingleBlockKernel(
         warpIndex < warps_pow32;
         warpIndex += numWarps)
     {
-        printf("[%03d] warp=%d, line=%02d: shared difference: %d\n",
-            threadIdx.x, warpID, lineID, int(intermediateWarp_Input - reinterpret_cast<half*>(sIntermediate)));
+        //printf("[%03d] warp=%d, line=%02d: shared difference: %d\n",
+        //    threadIdx.x, warpID, lineID, int(intermediateWarp_Input - reinterpret_cast<half*>(sIntermediate)));
 
         //the logical index into the arrays (not needed)
         [[maybe_unused]]

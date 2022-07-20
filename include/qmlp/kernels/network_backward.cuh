@@ -74,7 +74,7 @@ __global__ void NetworkKernelBackward(
                 adjIntermediateResultsThread[cout] = hZERO();
         }
         __syncwarp();
-        printf("index=%d, valid=%d\n", int(index), valid?1:0);
+        //printf("index=%d, valid=%d\n", int(index), valid?1:0);
 
         //call layers
         //e.g. qmlp::kernel::Layer<InChannelsDiv16, OutChannelsDiv16, MAX_CHANNELS, Bias, Activation>
