@@ -266,7 +266,7 @@ struct EncodingHashGrid
     template<bool Add, typename O>
     static __device__ void forwardLayer(
         const fposition_t<NumDimensions>& position, const HashGridLayerConfig& cfg,
-        const float* __restrict__ parameters, O& output)
+        const float* __restrict__ parameters, O& output, int outputOffset)
     {
         typedef typename O::ValueType O_t;
 
@@ -295,7 +295,7 @@ struct EncodingHashGrid
         {
 #pragma unroll
             for (int i = 0; i < NumFeaturesPerLayer; ++i) {
-                output[i] += fcast<O_t>(feature[i]);
+                output[i + outputOffset] += fcast<O_t>(feature[i]);
             }
         }
         else
@@ -303,7 +303,7 @@ struct EncodingHashGrid
 #pragma unroll
             for (int i = 0; i < NumFeaturesPerLayer; ++i) {
                 //printf("[%03d] feature %d = %.4f\n", threadIdx.x, i, feature[i]);
-                output[i] = fcast<O_t>(feature[i]);
+                output[i + outputOffset] = fcast<O_t>(feature[i]);
             }
         }
     }
@@ -324,13 +324,13 @@ struct EncodingHashGrid
         {
             for (int l = 0; l < NumLayers; ++l)
                 forwardLayer<false>(position, params.layers[l], params.parametersForward, 
-                    output + (l * NumFeaturesPerLayer));
+                    output, l * NumFeaturesPerLayer);
         }
         else if constexpr (CombinationMode == LayerCombinationMode::ADD)
         {
-            forwardLayer<false>(position, params.layers[0], params.parametersForward, output);
+            forwardLayer<false>(position, params.layers[0], params.parametersForward, output, 0);
             for (int l = 1; l < NumLayers; ++l)
-                forwardLayer<true>(position, params.layers[l], params.parametersForward, output);
+                forwardLayer<true>(position, params.layers[l], params.parametersForward, output, 0);
         }
     }
 

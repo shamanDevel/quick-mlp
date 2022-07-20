@@ -13,8 +13,17 @@ TEST_CASE("Densegrid2D", "[encoding]")
     int resolution = 8;
     int N = 16;
 
+    LayerCombinationMode combinationMode;
+    SECTION("add")
+    {
+        combinationMode = LayerCombinationMode::ADD;
+    }
+    SECTION("concat")
+    {
+        combinationMode = LayerCombinationMode::CONCAT;
+    }
     auto grid = std::make_shared<EncodingHashGrid>(
-        0, 2, 1, channels, -1, resolution, resolution, LayerCombinationMode::ADD, 
+        0, 2, 2, channels, -1, resolution, resolution+2, combinationMode,
         std::vector<float>(), std::vector<float>());
 
     Tensor input = Tensor(Tensor::FLOAT, { N, grid->maxInputChannel() + 1 });
@@ -62,6 +71,16 @@ TEST_CASE("LineIntegration3D", "[encoding]")
     int resolution = 8;
     int N = 16;
 
+    std::string combinationMode;
+    SECTION("add")
+    {
+        combinationMode = "add";
+    }
+    SECTION("concat")
+    {
+        combinationMode = "concat";
+    }
+
     using namespace nlohmann;
     auto config = R"json(
 {
@@ -75,12 +94,13 @@ TEST_CASE("LineIntegration3D", "[encoding]")
         "log2_hashmap_size": 7,
         "min_resolution": 3,
         "max_resolution": 6,
-        "combination_mode": "add"
+        "combination_mode": "concat"
     },
     "stepsize": 0.01,
     "blending": "additive"
 }
     )json"_json;
+    config["volume"]["combination_mode"] = combinationMode;
 
     auto enc = EncodingFactory::Instance().create(config);
     REQUIRE(enc->id() == "LineIntegration");
