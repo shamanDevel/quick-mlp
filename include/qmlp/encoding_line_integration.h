@@ -43,6 +43,7 @@ public:
     [[nodiscard]] nlohmann::json toJson() const override;
     static std::string ID();
     [[nodiscard]] std::string id() const override;
+    std::shared_ptr<IVolumetricEncoding> volume() const { return volume_; }
 
     [[nodiscard]] int maxInputChannel() const override;
     [[nodiscard]] int numOutputChannels() const override;

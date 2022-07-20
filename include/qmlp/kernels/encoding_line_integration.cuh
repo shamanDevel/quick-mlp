@@ -5,15 +5,15 @@
 #include <cuda_runtime.h>
 #endif
 
-#include "common.cuh"
-#include "encoding_line_integration_config.cuh"
+#include <qmlp/kernels/common.cuh>
+#include <qmlp/kernels/encoding_line_integration_config.cuh>
 
 QUICKMLP_KERNEL_NAMESPACE_BEGIN
 
 template<int NumDimensions>
 struct IntersectionRayAABB
 {
-    bool eval(const StaticArray<float, NumDimensions>& rayStart,
+    static __host__ __device__ __forceinline__ bool eval(const StaticArray<float, NumDimensions>& rayStart,
         const StaticArray<float, NumDimensions>& rayDir,
         const StaticArray<float, NumDimensions>& boxMin,
         const StaticArray<float, NumDimensions>& boxSize,
@@ -25,7 +25,7 @@ struct IntersectionRayAABB
 template<>
 struct IntersectionRayAABB<3>
 {
-    bool eval(const StaticArray<float, 3>& rayStart,
+    static __host__ __device__ __forceinline__ bool eval(const StaticArray<float, 3>& rayStart,
         const StaticArray<float, 3>& rayDir,
         const StaticArray<float, 3>& boxMin,
         const StaticArray<float, 3>& boxSize,
@@ -51,8 +51,7 @@ struct IntersectionRayAABB<3>
 template<int StartChannel, int NumDimensions, LineIntegrationBlendingMode Blending, typename Child>
 struct EncodingLineIntegration
 {
-    typedef typename Child child_t;
-    typedef LineIntegrationConfig<NumDimensions, Child> param_t;
+    typedef LineIntegrationConfig<NumDimensions, typename Child::param_t> param_t;
 
     static constexpr int NumOutputs = Child::NumOutputs;
     typedef StaticArray<float, NumOutputs> feature_t;
@@ -76,7 +75,7 @@ struct EncodingLineIntegration
             tmin, tmax);
 
         const int steps = static_cast<int>(floorf((tmax-tmin)/params.stepsize));
-        feature_t accu(zero_initialization_tag());
+        feature_t accu{ zero_initialization_tag() };
         //stepping
         for (float t = tmin; t < tmax; t+=params.stepsize)
         {
@@ -135,15 +134,15 @@ struct EncodingLineIntegration
             adjAccu[i] = adjOutputScale * adjOutput[i];
         }
 
-        position_t adjRayStart(zero_initialization_tag());
-        position_t adjRayDir(zero_initialization_tag());
+        position_t adjRayStart{ zero_initialization_tag() };
+        position_t adjRayDir{ zero_initialization_tag() };
 
         //adjoint stepping
         for (float t = tmin; t < tmax; t += params.stepsize)
         {
             //adjoint: sample new contribution
             position_t position = fma(t, rayDir, rayStart); //t*rayDir + rayStart
-            position_t adjPosition(zero_initialization_tag());
+            position_t adjPosition{zero_initialization_tag()};
             Child::template adjoint<EvaluateInputGradients, EvaluateParameterGradients>(
                 position, adjAccu, adjPosition, params.child);
             //adjoint: position

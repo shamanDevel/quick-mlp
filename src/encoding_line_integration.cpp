@@ -1,3 +1,4 @@
+#include <magic_enum.hpp>
 #include <qmlp/encoding_line_integration.h>
 
 #include <tinyformat.h>
@@ -71,7 +72,7 @@ std::string EncodingLineIntegration::id() const
 
 int EncodingLineIntegration::maxInputChannel() const
 {
-    return startChannel_ + dimension_ - 1;
+    return startChannel_ + dimension_*2 - 1;
 }
 
 int EncodingLineIntegration::numOutputChannels() const
@@ -81,11 +82,17 @@ int EncodingLineIntegration::numOutputChannels() const
 
 std::string EncodingLineIntegration::qualifiedName() const
 {
-    throw std::logic_error("Not implemented");
+    std::string child = volume_->qualifiedName();
+    return tinyformat::format("%s::EncodingLineIntegration<%d,%d,%s::LineIntegrationBlendingMode::%s,%s>",
+        CKL_STR(QUICKMLP_KERNEL_NAMESPACE),
+        startChannel_, dimension_,
+        CKL_STR(QUICKMLP_KERNEL_NAMESPACE), magic_enum::enum_name(blendingMode_),
+        child);
 }
 
 void EncodingLineIntegration::fillCode(std::stringstream& code) const
 {
+    volume_->fillCode(code); //include child files first
     code << ckl::KernelLoader::MainFile("qmlp/kernels/encoding_line_integration.cuh");
 }
 

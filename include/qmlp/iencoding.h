@@ -146,8 +146,11 @@ typedef std::shared_ptr<IEncoding> IEncoding_ptr;
  * Volumetric Encodings can be included as child encodings in other models like EncodingLineIntegration.
  * To support this, a few extra methods need to be provided.
  *
- * The kernel code must provide a
- * <code>static constexpr int NumOutputs</code>
+ * The kernel code must provide
+ * <code>
+ * static constexpr int NumOutputs; //number of outputs written in forward()
+ * typedef ... param_t; //The type expected as parameter in forward and adjoint
+ * </code>
  * together with the functions specified in IEncoding.
  */
 class IVolumetricEncoding : public IEncoding

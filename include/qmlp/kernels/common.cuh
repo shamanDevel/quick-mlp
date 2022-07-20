@@ -134,8 +134,9 @@ StaticArray<T, N> fma(T x, const StaticArray<T, N>& y, const StaticArray<T, N>& 
 #pragma unroll
     for (int i=0; i<N; ++i)
     {
-        w[i] = fma(x, y[i], z[i]);
+        w[i] = fmaf(x, y[i], z[i]);
     }
+    return w;
 }
 
 #if 0
@@ -164,7 +165,7 @@ class WrappedArray
 public:
     typedef T ValueType;
 
-    constexpr __forceinline__ __host__ __device__  WrappedArray() = default;
+    constexpr __forceinline__ __host__ __device__  WrappedArray() {};
     constexpr __forceinline__ __host__ __device__  WrappedArray(T* data, int size)
         : data_(data)
 #ifndef NDEBUG
