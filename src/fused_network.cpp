@@ -876,7 +876,7 @@ void FusedNetwork::compileBackwardKernel(int flags)
                 compileFlags).value();
 
             //compute shared memory
-            int bestBlockSize = 64; // fun.bestBlockSize();
+            int bestBlockSize = fun.bestBlockSize();
             int blockSize = bestBlockSize;
             int sharedMemorySize = bestBlockSize / 32 * sharedMemoryBytesPerWarp;
             if (sharedMemorySize > MAX_SHARED_MEMORY_BYTES)
@@ -1047,7 +1047,7 @@ void FusedNetwork::adjoint(const Tensor& input, const Tensor& adjOutput, Adjoint
             {
                 auto bIn = inputAcc;
 
-#if 1
+#if 0
                 //TEST
                 std::cout << "bIn, shape=" << bIn.size(0) << " x " << bIn.size(1) << std::endl;
                 std::vector<float> dataF(input.numel());

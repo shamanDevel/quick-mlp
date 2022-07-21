@@ -83,17 +83,17 @@ TEMPLATE_TEST_CASE_SIG("test-against-eigen-1", "[eigen]",
     auto root = current.parent_path().parent_path();
     auto configFolder = root / "network_configs";
 
-    int N = 64;
-    int Trials = 1;//20;
+    int N = 256;
+    int Trials = 5;//20;
     CUstream stream = nullptr;
 
     //create network
-    QuickMLP::Instance().setDebugMode(true);
+    QuickMLP::Instance().setDebugMode(false);
     auto network = std::make_shared<qmlp::FusedNetwork>(cfg, configFolder);
-    //SECTION("parallel")
-    //{
-    //    network->setParallelStreams(true);
-    //}
+    SECTION("parallel")
+    {
+        network->setParallelStreams(true);
+    }
     SECTION("serial")
     {
         network->setParallelStreams(false);

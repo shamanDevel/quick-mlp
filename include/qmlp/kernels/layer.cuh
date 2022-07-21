@@ -2,7 +2,7 @@
 
 #ifndef DEBUG_PRINT
 //Set to 1 to enable very verbose debug messages
-#define DEBUG_PRINT 1
+#define DEBUG_PRINT 0
 #endif
 
 #include <cuda_fp16.h>
@@ -34,7 +34,7 @@ __device__ void assertFragmentNotNaN(const Fragment& f, const char* msg)
 #if DEBUG_PRINT==1
         if (detail::isNaN(f.x[t])) printf("[%04d] NaN at fragment entry %d (%s)\n", threadIdx.x, t, msg);
 #else
-        assert(!detail::isNaN(f.x[t])
+        assert(!detail::isNaN(f.x[t]));
 #endif
     }
     __syncwarp();
@@ -58,15 +58,13 @@ __device__ void debug_load_matrix_sync(nvcuda::wmma::fragment<nvcuda::wmma::matr
 #if DEBUG_PRINT==1
             if (detail::isNaN(v)) printf("[%04d] NaN at input entry %d,%d\n", threadIdx.x, row, col);
 #else
-            assert(!detail::isNaN(v)
+            assert(!detail::isNaN(v));
 #endif
         }
     }
 
     //perform load
-    __syncwarp();
     nvcuda::wmma::load_matrix_sync(a, mptr, ldm);
-    __syncwarp();
 
     //3. Check if the fragments hold NaNs
     assertFragmentNotNaN(a, "");
@@ -75,7 +73,6 @@ __device__ void debug_load_matrix_sync(nvcuda::wmma::fragment<nvcuda::wmma::matr
 static inline __device__
 void printLayer(int layer, int idx, const half* data, int numel)
 {
-    __syncwarp();
     int i = 0;
     printf("{L %d}[T %03d] access memory from 0x%llx to 0x%llx\n",
         layer, idx, reinterpret_cast<long long>(data), reinterpret_cast<long long>(data + numel));
@@ -91,12 +88,10 @@ void printLayer(int layer, int idx, const half* data, int numel)
         i += 16;
         numel -= 16;
     }
-    __syncwarp();
 }
 static inline __device__
 void printLayerBinary(int layer, int idx, const half* data, int numel)
 {
-    __syncwarp();
     const unsigned short* dataS = reinterpret_cast<const unsigned short*>(data);
     int i = 0;
     //printf("{L %d}[T %03d] access memory from 0x%llx to 0x%llx\n",
@@ -113,7 +108,6 @@ void printLayerBinary(int layer, int idx, const half* data, int numel)
         i += 16;
         numel -= 16;
     }
-    __syncwarp();
 }
 
 // MAIN LAYER COMPUTATION
@@ -263,10 +257,8 @@ struct Layer
         }
         __syncwarp(); //make changes to shared memory (activations) visible
 
-//#if DEBUG_PRINT==1
-#if 1
+#if DEBUG_PRINT==1
         //TEST
-        //TODO: If I comment out this line, it fails to work!!
         if constexpr (ComputeWeightGradients)
             printLayer(0, threadIdx.x, adjIntermediateOut + (OutChannels * lineID), OutChannels);
 #endif
