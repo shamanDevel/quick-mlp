@@ -33,6 +33,7 @@ MANIFEST
 .DS_Store
 /dist
 /*build*
+/bin/*
 .cache/
 sosize-*.txt
 pybind11Config*.cmake

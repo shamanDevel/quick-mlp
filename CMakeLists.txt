@@ -34,7 +34,7 @@ string(REGEX MATCH "^[0-9]+" QUICKMLP_VERSION_PATCH "${QUICKMLP_VERSION_PATCH}")
 
 project(
   qmlp
-  LANGUAGES CXX
+  LANGUAGES CXX CUDA
   VERSION "${QUICKMLP_VERSION_MAJOR}.${QUICKMLP_VERSION_MINOR}.${QUICKMLP_VERSION_PATCH}")
 
 # Standard includes
@@ -91,16 +91,17 @@ option(QUICKMLP_TEST "Build qmlp test suite?" ${QUICKMLP_MASTER_PROJECT})
 option(QUICKMLP_SHARED "Build qmlp as a shared library?" OFF)
 option(QUICKMLP_PYTORCH_BINDINGS "Build PyTorch bindings?" OFF)
 
-# CUDA
-find_package(CUDA REQUIRED)
+# CUDA toolkit
 find_package(CUDAToolkit REQUIRED)
 
 # Third-party
 add_subdirectory(third-party/cuda-kernel-loader)
 add_subdirectory(third-party/json)
-set(CUTLASS_ENABLE_HEADERS_ONLY ON CACHE BOOL "Enable only the header library")
-add_subdirectory(third-party/cutlass)
 add_subdirectory(third-party/magic_enum)
+
+# currently not needed
+# set(CUTLASS_ENABLE_HEADERS_ONLY ON CACHE BOOL "Enable only the header library")
+# add_subdirectory(third-party/cutlass) 
 
 # Files
 set(QUICKMLP_HEADERS
@@ -236,9 +237,12 @@ if(NOT TARGET qmlp)
   # CUDA Stuff
   target_link_libraries(qmlp 
     PUBLIC
-        CUDA::cudart ckl::ckl nlohmann_json::nlohmann_json
+        CUDA::cudart 
+        ckl::ckl 
+        nlohmann_json::nlohmann_json
     PRIVATE
-        nvidia::cutlass::cutlass magic_enum::magic_enum)
+        #nvidia::cutlass::cutlass 
+        magic_enum::magic_enum)
   
 else()
   # It is invalid to install a target twice, too.

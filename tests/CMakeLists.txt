@@ -63,3 +63,16 @@ elseif(CMAKE_CXX_COMPILER_ID MATCHES "(GNU|Intel|Clang)" AND NOT QUICKMLP_CUDA_T
               -Wundef
               -Wnon-virtual-dtor)
 endif()
+
+# Copy to the bin/ order and run from there
+add_custom_command(TARGET qmlp-tests
+    POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_SOURCE_DIR}/bin
+    COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:qmlp-tests> ${CMAKE_SOURCE_DIR}/bin/qmlp-tests${CMAKE_EXECUTABLE_SUFFIX}
+
+    COMMENT "Copies the executable to bin/"
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/..
+
+    VERBATIM
+    )
+set_property(TARGET qmlp-tests PROPERTY VS_DEBUGGER_WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/bin")
