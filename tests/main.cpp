@@ -41,4 +41,5 @@ int main(int argc, char* argv[]) {
 	ckl::KernelLoader::Instance().cleanup();
 
 	return result;
+	//return 0;
 }

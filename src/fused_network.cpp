@@ -876,7 +876,7 @@ void FusedNetwork::compileBackwardKernel(int flags)
                 compileFlags).value();
 
             //compute shared memory
-            int bestBlockSize = fun.bestBlockSize();
+            int bestBlockSize = 64; // fun.bestBlockSize();
             int blockSize = bestBlockSize;
             int sharedMemorySize = bestBlockSize / 32 * sharedMemoryBytesPerWarp;
             if (sharedMemorySize > MAX_SHARED_MEMORY_BYTES)
@@ -988,10 +988,12 @@ void FusedNetwork::adjoint(const Tensor& input, const Tensor& adjOutput, Adjoint
     ak.adjoint.fun.call(
         minGridSize, ak.adjoint.blockSize, ak.adjoint.sharedMemorySize, stream,
         numel, inputAcc, adjOutputAcc, adjInputAcc, networkParams, forwardTmpMemory, adjointTmpMemory);
-    CKL_SAFE_CALL(cudaEventRecord(adjointEvent_, stream));
+    if (useParallelStreams_) {
+        CKL_SAFE_CALL(cudaEventRecord(adjointEvent_, stream));
+    }
 
     //TEST
-    CKL_SAFE_CALL(cudaDeviceSynchronize());
+    //CKL_SAFE_CALL(cudaDeviceSynchronize()); //TODO: Remove
 
     //LAUNCH KERNELS FOR WEIGHT+BIAS UPDATE
     if (hasNetworkGradients)
@@ -1023,20 +1025,29 @@ void FusedNetwork::adjoint(const Tensor& input, const Tensor& adjOutput, Adjoint
             half* aIn = static_cast<half*>(tmpMemoryAdjoint) + (ali.offsetAdjOut * numel);
 
             //launch kernel
+            CUstream layerStream;
+            if (useParallelStreams_) {
+                layerStream = ali.stream;
+                CKL_SAFE_CALL(cudaStreamWaitEvent(ali.stream, adjointEvent_));
+            } else
+            {
+                layerStream = stream;
+            }
+
             int gridSize = 1; //one block only!
-            CKL_SAFE_CALL(cudaStreamWaitEvent(ali.stream, adjointEvent_));
             std::cout << "Launch layer " << layer << " with a block size of " << ck.blockSize << " and a shared memory size of " <<
                 ck.sharedMemorySize << std::endl;
             if (ali.offsetIn>=0)
             {
                 const half* bIn = static_cast<const half*>(tmpMemoryForward) + (ali.offsetIn * numel);
-                ck.fun.call(gridSize, ck.blockSize, ck.sharedMemorySize, ali.stream,
+                ck.fun.call(gridSize, ck.blockSize, ck.sharedMemorySize, layerStream,
                     numel, outAdjWeights, aIn, bIn);
             }
             else
             {
                 auto bIn = inputAcc;
 
+#if 1
                 //TEST
                 std::cout << "bIn, shape=" << bIn.size(0) << " x " << bIn.size(1) << std::endl;
                 std::vector<float> dataF(input.numel());
@@ -1062,15 +1073,18 @@ void FusedNetwork::adjoint(const Tensor& input, const Tensor& adjOutput, Adjoint
                     for (int j = 0; j < aInTensor.size(1); ++j) { printf(" %+.2f ", __half2float(dataH[aInTensor.idx({ i,j })])); }
                     printf("\n");
                 }
+#endif
 
-                ck.fun.call(gridSize, ck.blockSize, ck.sharedMemorySize, ali.stream,
+                ck.fun.call(gridSize, ck.blockSize, ck.sharedMemorySize, layerStream,
                     numel, outAdjWeights, aIn, bIn);
             }
-            CKL_SAFE_CALL(cudaEventRecord(ali.event, ali.stream));
-            CKL_SAFE_CALL(cudaStreamWaitEvent(stream, ali.event));
+            if (useParallelStreams_) {
+                CKL_SAFE_CALL(cudaEventRecord(ali.event, ali.stream));
+                CKL_SAFE_CALL(cudaStreamWaitEvent(stream, ali.event));
+            }
 
             //TEST
-            CKL_SAFE_CALL(cudaDeviceSynchronize());
+            //CKL_SAFE_CALL(cudaDeviceSynchronize());
         }
     }
 }

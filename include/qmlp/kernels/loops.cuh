@@ -19,6 +19,15 @@ __forceinline__ __host__ __device__ T divRoundUp(T x, int y)
 	return (x + y - 1) / y;
 }
 
+/**
+ * \brief Rounds up 'numToRound' to the next multiple of 'multiple'.
+ * 'multiple' must no be a power of two. If it is a known power-of-two,
+ * \ref roundUpPower2 is faster.
+ * \tparam T 
+ * \param numToRound 
+ * \param multiple 
+ * \return 
+ */
 template<typename T>
 __forceinline__ __host__ __device__ T roundUp(T numToRound, int multiple)
 {

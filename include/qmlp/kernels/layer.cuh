@@ -1,5 +1,10 @@
 #pragma once
 
+#ifndef DEBUG_PRINT
+//Set to 1 to enable very verbose debug messages
+#define DEBUG_PRINT 1
+#endif
+
 #include <cuda_fp16.h>
 #include <mma.h>
 
@@ -11,6 +16,51 @@
 #include <qmlp/kernels/common.cuh>
 
 QUICKMLP_KERNEL_NAMESPACE_BEGIN
+
+//DEBUG FUNCTIONS
+
+namespace detail
+{
+    __forceinline__ __host__ __device__ bool isNaN(float v) { return ::isnan(v); }
+    __forceinline__ __host__ __device__ bool isNaN(half v) { return ::__hisnan(v); }
+}
+
+template<typename Fragment>
+__device__ void assertFragmentNotNaN(const Fragment& f, const char* msg)
+{
+    for (int t = 0; t < f.num_elements; t++)
+    {
+#if DEBUG_PRINT==1
+        if (detail::isNaN(f.x[t])) printf("[%04d] NaN at fragment entry %d (%s)\n", threadIdx.x, t, msg);
+#else
+        assert(!detail::isNaN(f.x[t])
+#endif
+    }
+}
+
+template<int m, int n, int k, typename T>
+__device__ void debug_load_matrix_sync(nvcuda::wmma::fragment<nvcuda::wmma::matrix_b, m, n, k, T, nvcuda::wmma::row_major>& a, const T* mptr, unsigned ldm)
+{
+    //1. Check if the input is aligned
+    assert(isAligned<8>(mptr));
+
+    //2. Check if the inputs hold NaNs
+    for (int col=0; col<k; ++col) for (int row=0; row<n; ++row)
+    {
+        T v = mptr[col * ldm + row]; //row-major
+#if DEBUG_PRINT==1
+        if (detail::isNaN(v)) printf("[%04d] NaN at input entry %d,%d\n", threadIdx.x, row,col);
+#else
+        assert(!detail::isNaN(v)
+#endif
+    }
+
+    //perform load
+    nvcuda::wmma::load_matrix_sync(a, mptr, ldm);
+
+    //3. Check if the fragments hold NaNs
+    assertFragmentNotNaN(a, "");
+}
 
 static inline __device__
 void printLayer(int layer, int idx, const half* data, int numel)
@@ -51,6 +101,8 @@ void printLayerBinary(int layer, int idx, const half* data, int numel)
         numel -= 16;
     }
 }
+
+// MAIN LAYER COMPUTATION
 
 template<int InChannelsDiv16, int OutChannelsDiv16, int HiddenStride, bool Bias, typename Activation>
 struct Layer
@@ -196,9 +248,13 @@ struct Layer
             }
         }
 
+//#if DEBUG_PRINT==1
+#if 1
         //TEST
+        //TODO: If I comment out this line, it fails to work!!
         if constexpr (ComputeWeightGradients)
             printLayer(0, threadIdx.x, adjIntermediateOut + (OutChannels * lineID), OutChannels);
+#endif
 
         //load it into fragment b_frag
         for (int cout = 0; cout < OutChannelsDiv16; ++cout)

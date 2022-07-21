@@ -109,6 +109,9 @@ private:
     std::vector<AdjointLayerInfo> backwardInfo_;
     CUevent adjointEvent_;
 
+    //Should parallel streams be used or not?
+    bool useParallelStreams_ = false;
+
 public:
     //Size of the matrix fragments (hardware limitation of the tensor cores)
     //All inner sizes must be multiples of this.
@@ -129,6 +132,10 @@ public:
      */
     FusedNetwork(const nlohmann::json& cfg, const std::filesystem::path& parent);
     ~FusedNetwork();
+
+    [[nodiscard]] bool isParallelStreams() const { return useParallelStreams_; }
+    //Enables or disables parallel streams. Parallel streams might be faster
+    void setParallelStreams(bool enabled) { useParallelStreams_ = enabled; }
 
     [[nodiscard]] const std::vector<IEncoding_ptr>& encodings() const { return encodings_; }
     [[nodiscard]] int numEncodings() const { return encodings_.size(); }

@@ -40,6 +40,21 @@ constexpr __host__ __device__ auto min(A a, B b)
 
 
 /**
+ * \brief Tests iff the pointer denoted by 'ptr' is aligned by N bytes
+ * \tparam N the number of bytes requested as alignment.
+ * \param ptr the pointer to the start of the buffer
+ * \return true iff 'ptr' is properly aligned
+ */
+template<int N>
+__forceinline__ __host__ __device__ bool isAligned(const void* ptr)
+{
+    typedef unsigned long long uintptr_t;
+    auto iptr = reinterpret_cast<uintptr_t>(ptr);
+    return !(iptr % N);
+}
+
+
+/**
  * Templated casting between float and half datatypes
  */
 template<typename Dst, typename Src>

@@ -6,6 +6,11 @@
  * everything in $$..$$ will be replaced
  */
 
+#ifndef DEBUG_PRINT
+ //Set to 1 to enable very verbose debug messages
+#define DEBUG_PRINT 1
+#endif
+
 #ifndef CUDA_NO_HOST
 #include "assert.h"
 #include <host_defines.h>
@@ -70,8 +75,10 @@ struct OHatTmpLoader
         const half2* src = reinterpret_cast<const half2*>(srcGlobal + warpID*32*M);
         half2* dst = reinterpret_cast<half2*>(tmpShared);
 
+#if DEBUG_PRINT==1
         //TEST
         printLayer(0, threadIdx.x, srcGlobal + (warpID * 32 * M) + (M * (threadIdx.x % 32)), M);
+#endif
 
         __syncwarp();
         //now load 32*M entries, linear in memory. Layout does not matter here
@@ -80,6 +87,7 @@ struct OHatTmpLoader
 #pragma unroll
         for (int cout = 0; cout < M2; ++cout)
         {
+            //TODO: optimize with __ldcs(const T* address)
             dst[32 * cout + lineID] = src[32 * cout + lineID];
         }
         __syncwarp();
@@ -91,11 +99,14 @@ struct OHatTmpLoader
      */
     __device__ static void loadToFragment(fragment_t dst[MDiv16][2], const half* tmpShared)
     {
-        //TEST
         __syncwarp();
+
+#if DEBUG_PRINT==1
+        //TEST
         const int lineID = threadIdx.x % 32;
         //printLayerBinary(10, threadIdx.x, tmpShared + (M * lineID), M);
         printLayer(10, threadIdx.x, tmpShared + (M * lineID), M);
+#endif
 
 #pragma unroll
         for (int cout = 0; cout < MDiv16; ++cout)
@@ -148,13 +159,16 @@ struct HiddenLoader
         half2* dst = reinterpret_cast<half2*>(tmpShared);
 
         //now load 32*M entries, linear in memory. Layout does not matter here
+        __syncwarp();
         const int lineID = threadIdx.x % 32;
         static constexpr int N2 = NDiv16 * 8; //number of half2 entries
 #pragma unroll
         for (int cin = 0; cin < N2; ++cin)
         {
+            //TODO: optimize with __ldcs(const T* address)
             dst[32 * cin + lineID] = src[32 * cin + lineID];
         }
+        __syncwarp();
     }
 
     /**
@@ -163,12 +177,22 @@ struct HiddenLoader
      */
     __device__ static void loadToFragment(fragment_t dst[2][NDiv16], const half* tmpShared)
     {
-        ////TEST
-        //printLayer(1, threadIdx.x, tmpShared + (N*(threadIdx.x%32)), N);
+        __syncwarp();
+
+#if DEBUG_PRINT==1
+        //TEST
+        printLayer(1, threadIdx.x, tmpShared + (N*(threadIdx.x%32)), N);
+#endif
+        assert(__activemask() == 0xffffffffu);
 
         //note: load as row-major for transposing!
+#pragma unroll
         for (int cin = 0; cin < NDiv16; ++cin)
         {
+            //TODO: check layout again
+            assert(isAligned<8>(tmpShared + 16 * cin));
+            assert(isAligned<8>(tmpShared + 16 * cin + 16 * 32));
+
             using namespace nvcuda::wmma;
             load_matrix_sync(dst[0][cin], tmpShared + 16 * cin, 32);
             load_matrix_sync(dst[1][cin], tmpShared + 16 * cin + 16 * 32, 32);
@@ -219,13 +243,14 @@ struct InputLoader
 
         constexpr int INPUT_PAD_START = $$INPUT_PAD_START$$;
         constexpr int CHANNELS_IN = $$CHANNELS_IN$$;
+        static_assert(CHANNELS_IN == N, "template parameter N does not match CHANNELS_IN");
 
         half* intermediateResultsThread = tmpShared + N * lineID;
         if (valid)
         {
             const int index = 32 * warpID + lineID;
             auto encodingInput = srcGlobal[index];
-            WrappedArray<half> encodingOutput{ intermediateResultsThread, CHANNELS_IN };
+            WrappedArray<half> encodingOutput{ intermediateResultsThread, N };
 
             //CODE GENERATION [[
 $$CALL_ENCODINGS$$
@@ -234,7 +259,7 @@ $$CALL_ENCODINGS$$
             //padding
             for (int cin = INPUT_PAD_START; cin < CHANNELS_IN; ++cin)
             {
-                intermediateResultsThread[cin] = __float2half(2.0);//hZERO();
+                intermediateResultsThread[cin] = hZERO();
             }
         }
         else
@@ -242,37 +267,58 @@ $$CALL_ENCODINGS$$
             //invalid index, fill with zeros to avoid NaNs
             for (int cin = 0; cin < CHANNELS_IN; ++cin)
             {
-                intermediateResultsThread[cin] = __float2half(1.0);//hZERO();
+                intermediateResultsThread[cin] = hZERO();
             }
         }
+        __syncwarp();
     }
 
     /**
      * Loads the current block from shared memory \c tmpShared into the
      * wmma::fragments for the tensor core multiplication
      */
-    __device__ static void loadToFragment(fragment_t dst[2][NDiv16], const half* tmpShared)
+    __forceinline__ __device__ static void loadToFragment(fragment_t dst[2][NDiv16], const half* tmpShared)
     {
-        //TEST
-        printLayer(11, threadIdx.x, tmpShared + (N*(threadIdx.x%32)), N);
+        /*
+         * tmpShared:
+         *  - channel from 0 to N-1
+         *  - batch from 0 to 31
+         * matrix in shared memory: channel rows, batch columns, column major
+         *    element(channel, batch) = tmpShared[channel + N*batch]
+         * We need it transposed as a matrix of shape (batch, channels) =: I'
+         *    -> load it row-major
+         *    fragment[0, cin] spans I'[0:16, 16*cin:16*(cin+1)]
+         *       = tmpShared with offset 16*cin and stride N
+         *    fragment[1, cin] spans I'[16:32, 16*cin:16*(cin+1)]
+         *       = tmpShared with offset 16*cin+16*N and stride N
+         */
 
-        //note: load as row-major for transposing!
+#if DEBUG_PRINT==1
+        //TEST
+        const int lineID = threadIdx.x % 32;
+        printLayer(11, threadIdx.x, tmpShared + (N*lineID), N);
+#endif
+
+        __syncwarp();
+
+        printf("[%04d] tmpShared=0x%llx, N=%d\n", threadIdx.x, reinterpret_cast<unsigned long long>(tmpShared), N);
+
+#pragma unroll
         for (int cin = 0; cin < NDiv16; ++cin)
         {
-            using namespace nvcuda::wmma;
-            load_matrix_sync(dst[0][cin], tmpShared + 16 * cin, N);
-            load_matrix_sync(dst[1][cin], tmpShared + 16 * cin + 16*N, N);
-        }
+            //note: load as row-major for transposing!
 
-        ////TEST
-        //__syncwarp();
-        //const int lineID = threadIdx.x % 32;
-        //for (int n = 0; n < NDiv16; ++n) for (int k=0; k<2; ++k)
-        //    for (int t = 0; t < dst[k][n].num_elements; t++)
-        //    {
-        //        printf("w=%02d, n=%d, k=%d, t=%d -> B=%.3f\n",
-        //            lineID, n, k, t, __half2float(dst[k][n].x[t]));
-        //    }
+            assert(isAligned<8>(tmpShared + 16 * cin));
+            assert(isAligned<8>(tmpShared + 16 * cin + 16 * N));
+
+            //TODO: somehow, NaNs are introduced here!
+            using namespace nvcuda::wmma;
+            debug_load_matrix_sync(dst[0][cin], tmpShared + 16 * cin, N);
+            debug_load_matrix_sync(dst[1][cin], tmpShared + 16 * cin + 16*N, N);
+
+            assertFragmentNotNaN(dst[0][cin], "load0");
+            assertFragmentNotNaN(dst[1][cin], "load1");
+        }
     }
 };
 
@@ -285,8 +331,8 @@ $$CALL_ENCODINGS$$
  * TODO: Bias reduction
  *
  * \tparam AccuT the type of C, can be half or float
- * \tparam ALoader the loader for matrix A of shape M*K
- * \tparam BLoader the loader for matrix B of shape K*N
+ * \tparam ALoader the loader for matrix A of shape M*K (OHatLoader)
+ * \tparam BLoader the loader for matrix B of shape K*N (HiddenLoader or InputLoader)
  * \param numel the number of active elements
  * \param outAdjWeights the adjoint of weight matrix, row-major
  */
@@ -331,40 +377,23 @@ __global__ void WeightUpdateSingleBlockKernel(
     //This is the memory that must be provided by the host code:
     [[maybe_unused]]
     constexpr int SharedBytesPerWarp = max(SharedBytesPerWarp_Input, SharedBytesPerWarp_Output);
+    if (threadIdx.x == 0)
+        printf("SharedBytesPerWarp_Input=%d, SharedBytesPerWarp_Output=%d\n",
+            SharedBytesPerWarp_Input, SharedBytesPerWarp_Output);
 
     extern __shared__ char sIntermediate[];
 
-    ////TEST
-    //half* dummyShared = reinterpret_cast<half*>(sIntermediate);
-    //int Ndummy = (ALoader::SharedMemoryHalf + BLoader::SharedMemoryHalf) * numWarps;
-    //half dummyValue = __float2half(-5.0f);
-    //if (threadIdx.x==0)
-    //{
-    //    printf("num warps: %d, fill %d half entries\n", numWarps, Ndummy);
-    //    printf("Fill addresses from 0x%llx to 0x%llx\n",
-    //        reinterpret_cast<long long>(sIntermediate), reinterpret_cast<long long>(sIntermediate + Ndummy + 1));
-    //    for (int i = 0; i < Ndummy; ++i) dummyShared[i] = dummyValue;
-    //}
-    //int pred = 1;
-    //int count = __syncthreads_count(pred);
-    //__threadfence();
-    //if (threadIdx.x == 0) printf("Syncthreads count: %d\n", count);
-
-    //printf("[%03d] warpID=%d, lineID=%02d, SharedBytesPerWarp_Input=%d\n",
-    //    threadIdx.x, warpID, lineID, SharedBytesPerWarp_Input);
-
-    half* intermediateWarp_Input = reinterpret_cast<half*>(sIntermediate + SharedBytesPerWarp_Input * warpID);
+    half* intermediateWarp_Input = reinterpret_cast<half*>(sIntermediate + (SharedBytesPerWarp_Input * warpID));
     AFragment_t a_frag[MDiv16][2];
     BFragment_t b_frag[2][NDiv16];
 
     //now loop over the partitions of K of size 32
     const auto warps_pow32 = divRoundUp(numel, 32);
+    if (threadIdx.x == 0) printf("active warps=%d, numWarps=%d\n", warps_pow32, numWarps);
     for (int warpIndex = warpID; 
         warpIndex < warps_pow32;
         warpIndex += numWarps)
     {
-        //printf("[%03d] warp=%d, line=%02d: shared difference: %d\n",
-        //    threadIdx.x, warpID, lineID, int(intermediateWarp_Input - reinterpret_cast<half*>(sIntermediate)));
 
         //the logical index into the arrays (not needed)
         [[maybe_unused]]
@@ -374,10 +403,7 @@ __global__ void WeightUpdateSingleBlockKernel(
         //If this values is <32, this warp is only half filled,
         //and special care must be taken for loading+saving
         int elementsLeft = numel - warpIndex * 32;
-
-        //TEST
-        //if (lineID == 0) printf("warp %03d, idx=%d -> elements left=%d\n", warpID, warpIndex, elementsLeft);
-
+        
         //load A and B to shared
         half* aShared = intermediateWarp_Input;
         half* bShared = intermediateWarp_Input + ALoader::SharedMemoryHalf;
@@ -388,6 +414,12 @@ __global__ void WeightUpdateSingleBlockKernel(
         ALoader::loadToFragment(a_frag, aShared);
         BLoader::loadToFragment(b_frag, bShared);
 
+        //Test
+        for (int m = 0; m < MDiv16; ++m) for (int k = 0; k < 2; ++k)
+            assertFragmentNotNaN(a_frag[m][k], "a_frag");
+        for (int n = 0; n < NDiv16; ++n) for (int k = 0; k < 2; ++k)
+            assertFragmentNotNaN(b_frag[k][n], "b_frag");
+
         //matmul, accumulates in the per-warp c-matrix
         for (int k = 0; k < 2; ++k)
         {
@@ -397,13 +429,9 @@ __global__ void WeightUpdateSingleBlockKernel(
             }
         }
 
-        ////TEST
-        //for (int m = 0; m < MDiv16; ++m) for (int n = 0; n < NDiv16; ++n)
-        //    for (int t = 0; t < c_frag[0][0].num_elements; t++)
-        //    {
-        //        printf("w=%02d, m=%d, n=%d, t=%d -> C=%.3f\n", 
-        //            lineID, m, n, t, c_frag[m][n].x[t]);
-        //    }
+        //Test
+        for (int m = 0; m < MDiv16; ++m) for (int n = 0; n < NDiv16; ++n)
+            assertFragmentNotNaN(c_frag[m][n], "c_frag");
     }
 
     //reduce C across warps
@@ -414,12 +442,6 @@ __global__ void WeightUpdateSingleBlockKernel(
         store_matrix_sync(cSharedWarp + 16 * n + N * 16 * m, c_frag[m][n], N, mem_row_major);
     }
 
-    ////test
-    //if (warpID == 0 && lineID==0)
-    //{
-    //    for (int i = 0; i < M * N; ++i) printf("i[%d]=%.3f\n", i, cSharedWarp[i]);
-    //}
-
     //now perform the reduction over the whole block
     __syncthreads();
     AccuT* cSharedBlock = reinterpret_cast<AccuT*>(sIntermediate);
@@ -428,10 +450,10 @@ __global__ void WeightUpdateSingleBlockKernel(
     for (int i=threadIdx.x; i<reduceBatches; i+=blockDim.x)
     {
         AccuT accu = cSharedBlock[i];
-        //printf("cShared[%d,0]=%.4f\n", i, accu);
+        printf("cShared[%03d,000]=%.4f\n", i, accu);
         for (int j = 1; j < reduceElements; ++j) {
             accu += cSharedBlock[i + j * reduceBatches];
-            //printf("cShared[%d,%d]=%.4f\n", i, j, cSharedBlock[i + j * reduceBatches]);
+            //printf("cShared[%03d,%03d]=%.4f\n", i, j, cSharedBlock[i + j * reduceBatches]);
         }
         //write the matrix back to global memory
         outAdjWeights[i] += accu;
