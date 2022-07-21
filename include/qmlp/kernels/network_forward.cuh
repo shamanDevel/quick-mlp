@@ -79,6 +79,7 @@ $$CALL_ENCODINGS$$
                 intermediateResultsThread[cin] = hZERO();
             }
         }
+        __syncwarp();
 
         //call layers
         //e.g. qmlp::kernel::Layer<InChannelsDiv16, OutChannelsDiv16, MAX_CHANNELS, Bias, Activation>
@@ -90,6 +91,7 @@ $$CALL_NETWORK_LAYERS$$
         //]] CODE GENERATIION
 
         //copy output
+        __syncwarp();
         if (valid)
         {
             for (int cout=0; cout<CHANNELS_OUT; ++cout)

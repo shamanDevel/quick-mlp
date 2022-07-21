@@ -194,8 +194,10 @@ struct HiddenLoader
             assert(isAligned<8>(tmpShared + 16 * cin + 16 * 32));
 
             using namespace nvcuda::wmma;
+            __syncwarp();
             load_matrix_sync(dst[0][cin], tmpShared + 16 * cin, 32);
             load_matrix_sync(dst[1][cin], tmpShared + 16 * cin + 16 * 32, 32);
+            __syncwarp();
         }
         //run the activations again
         for (int j = 0; j < 2; ++j) {
@@ -246,9 +248,9 @@ struct InputLoader
         static_assert(CHANNELS_IN == N, "template parameter N does not match CHANNELS_IN");
 
         half* intermediateResultsThread = tmpShared + N * lineID;
+        const int index = 32 * warpID + lineID;
         if (valid)
         {
-            const int index = 32 * warpID + lineID;
             auto encodingInput = srcGlobal[index];
             WrappedArray<half> encodingOutput{ intermediateResultsThread, N };
 
@@ -270,6 +272,16 @@ $$CALL_ENCODINGS$$
                 intermediateResultsThread[cin] = hZERO();
             }
         }
+
+        //TEST
+        __syncwarp();
+        for (int cin=0; cin<N; ++cin)
+        {
+            half v = intermediateResultsThread[cin];
+            if (detail::isNaN(v))
+                printf("NaN at index=%d, cin=%d\n", index, cin);
+        }
+
         __syncwarp();
     }
 
@@ -313,8 +325,10 @@ $$CALL_ENCODINGS$$
 
             //TODO: somehow, NaNs are introduced here!
             using namespace nvcuda::wmma;
+            __syncwarp();
             debug_load_matrix_sync(dst[0][cin], tmpShared + 16 * cin, N);
             debug_load_matrix_sync(dst[1][cin], tmpShared + 16 * cin + 16*N, N);
+            __syncwarp();
 
             assertFragmentNotNaN(dst[0][cin], "load0");
             assertFragmentNotNaN(dst[1][cin], "load1");
@@ -421,6 +435,7 @@ __global__ void WeightUpdateSingleBlockKernel(
             assertFragmentNotNaN(b_frag[k][n], "b_frag");
 
         //matmul, accumulates in the per-warp c-matrix
+        __syncwarp();
         for (int k = 0; k < 2; ++k)
         {
             for (int m = 0; m < MDiv16; ++m) for (int n = 0; n < NDiv16; ++n)
@@ -428,11 +443,15 @@ __global__ void WeightUpdateSingleBlockKernel(
                 mma_sync(c_frag[m][n], a_frag[m][k], b_frag[k][n], c_frag[m][n]);
             }
         }
+        __syncwarp();
 
         //Test
         for (int m = 0; m < MDiv16; ++m) for (int n = 0; n < NDiv16; ++n)
             assertFragmentNotNaN(c_frag[m][n], "c_frag");
     }
+
+    __syncthreads(); //let's wait until all warps are finished.
+                     //Otherwise, we could overwrite the tmpShared of other warps
 
     //reduce C across warps
     //but first, we need to store it to shared memory

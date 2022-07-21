@@ -83,12 +83,12 @@ TEMPLATE_TEST_CASE_SIG("test-against-eigen-1", "[eigen]",
     auto root = current.parent_path().parent_path();
     auto configFolder = root / "network_configs";
 
-    int N = 256;
-    int Trials = 20;
+    int N = 64;
+    int Trials = 1;//20;
     CUstream stream = nullptr;
 
     //create network
-    QuickMLP::Instance().setDebugMode(false);
+    QuickMLP::Instance().setDebugMode(true);
     auto network = std::make_shared<qmlp::FusedNetwork>(cfg, configFolder);
     //SECTION("parallel")
     //{
@@ -195,6 +195,7 @@ TEMPLATE_TEST_CASE_SIG("test-against-eigen-1", "[eigen]",
             return qmlp::tests::adjointWithFlags(network, inputDevice, outputDevice, adjInputDevice, adjOutputDevice, flags, stream);
         };
 
+#if 1
         //only input derivatives
         {
             int tmpSize = adjointWithFlags(qmlp::FusedNetwork::GRADIENTS_INPUT);
@@ -202,7 +203,9 @@ TEMPLATE_TEST_CASE_SIG("test-against-eigen-1", "[eigen]",
             INFO("size of temporary memory: " << tmpSize);
             COMPARE_TENSOR_AND_MATRIX(adjInputDevice, adjInputEigen);
         }
+#endif
 
+#if 1
         //only weight derivatives
         {
             int tmpSize = adjointWithFlags(qmlp::FusedNetwork::GRADIENTS_NETWORK_WEIGHTS);
@@ -217,6 +220,7 @@ TEMPLATE_TEST_CASE_SIG("test-against-eigen-1", "[eigen]",
                     adjBias0Eigen);
             }
         }
+#endif
     }
 }
 

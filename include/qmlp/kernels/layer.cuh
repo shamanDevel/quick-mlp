@@ -28,6 +28,7 @@ namespace detail
 template<typename Fragment>
 __device__ void assertFragmentNotNaN(const Fragment& f, const char* msg)
 {
+    __syncwarp();
     for (int t = 0; t < f.num_elements; t++)
     {
 #if DEBUG_PRINT==1
@@ -36,6 +37,7 @@ __device__ void assertFragmentNotNaN(const Fragment& f, const char* msg)
         assert(!detail::isNaN(f.x[t])
 #endif
     }
+    __syncwarp();
 }
 
 template<int m, int n, int k, typename T>
@@ -45,18 +47,26 @@ __device__ void debug_load_matrix_sync(nvcuda::wmma::fragment<nvcuda::wmma::matr
     assert(isAligned<8>(mptr));
 
     //2. Check if the inputs hold NaNs
-    for (int col=0; col<k; ++col) for (int row=0; row<n; ++row)
-    {
-        T v = mptr[col * ldm + row]; //row-major
+    const int lineID = threadIdx.x % 32;
+    if (lineID == 0) {
+        auto startPtr = reinterpret_cast<long long>(mptr);
+        auto endPtr = reinterpret_cast<long long>(mptr + (ldm)*k);
+        printf("load_matrix_sync from 0x%llx to 0x%llx\n", startPtr, endPtr);
+        for (int col = 0; col < k; ++col) for (int row = 0; row < n; ++row)
+        {
+            T v = mptr[col * ldm + row]; //row-major
 #if DEBUG_PRINT==1
-        if (detail::isNaN(v)) printf("[%04d] NaN at input entry %d,%d\n", threadIdx.x, row,col);
+            if (detail::isNaN(v)) printf("[%04d] NaN at input entry %d,%d\n", threadIdx.x, row, col);
 #else
-        assert(!detail::isNaN(v)
+            assert(!detail::isNaN(v)
 #endif
+        }
     }
 
     //perform load
+    __syncwarp();
     nvcuda::wmma::load_matrix_sync(a, mptr, ldm);
+    __syncwarp();
 
     //3. Check if the fragments hold NaNs
     assertFragmentNotNaN(a, "");
@@ -65,9 +75,10 @@ __device__ void debug_load_matrix_sync(nvcuda::wmma::fragment<nvcuda::wmma::matr
 static inline __device__
 void printLayer(int layer, int idx, const half* data, int numel)
 {
+    __syncwarp();
     int i = 0;
-    //printf("{L %d}[T %03d] access memory from 0x%llx to 0x%llx\n",
-    //    layer, idx, reinterpret_cast<long long>(data), reinterpret_cast<long long>(data + numel));
+    printf("{L %d}[T %03d] access memory from 0x%llx to 0x%llx\n",
+        layer, idx, reinterpret_cast<long long>(data), reinterpret_cast<long long>(data + numel));
     while (numel > 0)
     {
         printf("{L %d}[T %03d] (%02d-%02d): %+.4f %+.4f %+.4f %+.4f %+.4f %+.4f %+.4f %+.4f %+.4f %+.4f %+.4f %+.4f %+.4f %+.4f %+.4f %+.4f\n",
@@ -80,10 +91,12 @@ void printLayer(int layer, int idx, const half* data, int numel)
         i += 16;
         numel -= 16;
     }
+    __syncwarp();
 }
 static inline __device__
 void printLayerBinary(int layer, int idx, const half* data, int numel)
 {
+    __syncwarp();
     const unsigned short* dataS = reinterpret_cast<const unsigned short*>(data);
     int i = 0;
     //printf("{L %d}[T %03d] access memory from 0x%llx to 0x%llx\n",
@@ -100,6 +113,7 @@ void printLayerBinary(int layer, int idx, const half* data, int numel)
         i += 16;
         numel -= 16;
     }
+    __syncwarp();
 }
 
 // MAIN LAYER COMPUTATION
@@ -247,6 +261,7 @@ struct Layer
                 adjIntermediateOut[cout + OutChannels * lineID] = adjActivationInput;
             }
         }
+        __syncwarp(); //make changes to shared memory (activations) visible
 
 //#if DEBUG_PRINT==1
 #if 1
