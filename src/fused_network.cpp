@@ -555,9 +555,9 @@ void FusedNetwork::compileForwardKernel()
         callLayers << "intermediateResultsWarp, ";
         //storage for the intermediate states
         //offset into forwardTmpMemory:
-        // prefix sum of the previous layers (perEntryForwardMemoryHalf) * numel
+        // prefix sum of the previous layers (perEntryForwardMemoryHalf) * numel32
         // + 32 * channelsOut * warpID
-        callLayers << "forwardTmpMemory + (" << perEntryForwardMemoryHalf << "*numel"
+        callLayers << "forwardTmpMemory + (" << perEntryForwardMemoryHalf << "*numel32"
             << " + 32*" << l.channelsOut << "*warpID) ";
         perEntryForwardMemoryHalf += l.channelsOut;
         //end function
@@ -710,7 +710,7 @@ void FusedNetwork::compileBackwardKernel(int flags)
     //call layers
     //TODO: prefetch weights in shared memory?
     std::stringstream callLayers;
-    for (int i=layers_.size()-1; i>=0; --i) //Note: reverse order!
+    for (int i=static_cast<int>(layers_.size())-1; i>=0; --i) //Note: reverse order!
     {
         const auto& l = layers_[i];
         auto& ali = backwardInfo_[i];
@@ -728,10 +728,10 @@ void FusedNetwork::compileBackwardKernel(int flags)
         else
             callLayers << "nullptr, ";
         callLayers << "adjIntermediateResultsWarp, \n" <<
-            "    forwardTmpMemory + (" << ali.offsetAdjOut << "*numel" << " + 32*" << l.channelsOut << "*warpID), " <<
-            "adjointTmpMemory + (" << ali.offsetAdjOut << "*numel" << " + 32*" << l.channelsOut << "*warpID) );\n";
+            "    forwardTmpMemory + (" << ali.offsetAdjOut << "*numel32" << " + 32*" << l.channelsOut << "*warpID), " <<
+            "adjointTmpMemory + (" << ali.offsetAdjOut << "*numel32" << " + 32*" << l.channelsOut << "*warpID) );\n";
         ////test
-        //callLayers << "if (index == 0) { printLayer(" << i << ", index, adjIntermediateResultsThread, " << l.channelsIn << "); }\n";
+        //callLayers << "printLayer(" << i << ", index, adjIntermediateResultsThread, " << l.channelsIn << ");\n";
     }
     replaceAll(codeTemplate, "$$CALL_NETWORK_LAYERS$$", callLayers.str());
 
@@ -851,12 +851,14 @@ void FusedNetwork::compileBackwardKernel(int flags)
             }
             else
             {
-                if (forwardSpecs.activations.size() > 1) throw std::runtime_error("Individual activations per channel are not implemented yet");
+                //inner layers, run the activations of the *previous* layer again
+                const auto& prevActivations = layers_[layer - 1].activations;
+                if (prevActivations.size() > 1) throw std::runtime_error("Individual activations per channel are not implemented yet");
                 kernelName = tinyformat::format(
                     "qmlp::kernel::WeightUpdateSingleBlockKernel<%s, qmlp::kernel::OHatTmpLoader<%d>, qmlp::kernel::HiddenLoader<%d, qmlp::kernel::activations::%s> >",
                     Tensor::DatatypePerEntry[networkParameterPrecision(Tensor::GRADIENTS)],
                     forwardSpecs.channelsOut / 16, forwardSpecs.channelsIn / 16,
-                    forwardSpecs.activations[0]->id());
+                    prevActivations[0]->id());
 
                 sharedMemoryBytesPerWarp_Input = sizeof(half) * 32 *
                     (forwardSpecs.channelsIn + forwardSpecs.channelsOut);
@@ -937,7 +939,8 @@ void FusedNetwork::adjoint(const Tensor& input, const Tensor& adjOutput, Adjoint
     CHECK_DIM(adjOutput, 2);
     CHECK_SIZE(input, 1, channelsIn());
     CHECK_SIZE(adjOutput, 1, channelsOut());
-    int numel = input.size(0);
+    const int numel = input.size(0);
+    const int numel32 = roundUp(numel, WARP_SIZE);
     CHECK_SIZE(adjOutput, 0, numel);
     CHECK_DTYPE(input, precisionIn());
     CHECK_DTYPE(adjOutput, precisionOut());
@@ -1022,7 +1025,7 @@ void FusedNetwork::adjoint(const Tensor& input, const Tensor& adjOutput, Adjoint
             //assemble parameter pointers
             void* outAdjWeights = static_cast<char*>(parametersGradients_.rawPtr()) +
                 parametersGradients_.bytesPerEntry() * ls.weightsStart;
-            half* aIn = static_cast<half*>(tmpMemoryAdjoint) + (ali.offsetAdjOut * numel);
+            half* aIn = static_cast<half*>(tmpMemoryAdjoint) + (ali.offsetAdjOut * numel32);
 
             //launch kernel
             CUstream layerStream;
@@ -1039,7 +1042,7 @@ void FusedNetwork::adjoint(const Tensor& input, const Tensor& adjOutput, Adjoint
                 ck.sharedMemorySize << std::endl;
             if (ali.offsetIn>=0)
             {
-                const half* bIn = static_cast<const half*>(tmpMemoryForward) + (ali.offsetIn * numel);
+                const half* bIn = static_cast<const half*>(tmpMemoryForward) + (ali.offsetIn * numel32);
                 ck.fun.call(gridSize, ck.blockSize, ck.sharedMemorySize, layerStream,
                     numel, outAdjWeights, aIn, bIn);
             }
@@ -1074,7 +1077,6 @@ void FusedNetwork::adjoint(const Tensor& input, const Tensor& adjOutput, Adjoint
                     printf("\n");
                 }
 #endif
-
                 ck.fun.call(gridSize, ck.blockSize, ck.sharedMemorySize, layerStream,
                     numel, outAdjWeights, aIn, bIn);
             }

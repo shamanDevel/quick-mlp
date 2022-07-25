@@ -25,18 +25,18 @@ using namespace qmlp::tests;
 TEMPLATE_TEST_CASE_SIG("test-against-eigen-1", "[eigen]",
     ((int Channels0, int Channels1, bool Bias1, TestActivationType Activ1),
         Channels0, Channels1, Bias1, Activ1),
-    (16, 16, false, TestActivationType::SINE)//,
-    //(16, 16, false, TestActivationType::RELU),
-    //(16, 16, false, TestActivationType::IDENTITY),
-    //(16, 32, false, TestActivationType::SINE),
-    //(16, 32, false, TestActivationType::RELU),
-    //(16, 32, false, TestActivationType::IDENTITY),
-    //(48, 16, false, TestActivationType::SINE),
-    //(48, 16, false, TestActivationType::RELU),
-    //(48, 16, false, TestActivationType::IDENTITY),
-    //(48, 32, false, TestActivationType::SINE),
-    //(48, 32, false, TestActivationType::RELU),
-    //(48, 32, false, TestActivationType::IDENTITY),
+    (16, 16, false, TestActivationType::SINE),
+    (16, 16, false, TestActivationType::RELU),
+    (16, 16, false, TestActivationType::IDENTITY),
+    (16, 32, false, TestActivationType::SINE),
+    (16, 32, false, TestActivationType::RELU),
+    (16, 32, false, TestActivationType::IDENTITY),
+    (48, 16, false, TestActivationType::SINE),
+    (48, 16, false, TestActivationType::RELU),
+    (48, 16, false, TestActivationType::IDENTITY),
+    (48, 32, false, TestActivationType::SINE),
+    (48, 32, false, TestActivationType::RELU),
+    (48, 32, false, TestActivationType::IDENTITY)//,
     //(16, 16, true, TestActivationType::SINE),
     //(16, 16, true, TestActivationType::RELU),
     //(16, 16, true, TestActivationType::IDENTITY),
@@ -83,7 +83,7 @@ TEMPLATE_TEST_CASE_SIG("test-against-eigen-1", "[eigen]",
     auto root = current.parent_path().parent_path();
     auto configFolder = root / "network_configs";
 
-    int N = 256;
+    int N = 77;
     int Trials = 5;//20;
     CUstream stream = nullptr;
 

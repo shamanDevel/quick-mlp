@@ -74,8 +74,8 @@ static inline __device__
 void printLayer(int layer, int idx, const half* data, int numel)
 {
     int i = 0;
-    printf("{L %d}[T %03d] access memory from 0x%llx to 0x%llx\n",
-        layer, idx, reinterpret_cast<long long>(data), reinterpret_cast<long long>(data + numel));
+    //printf("{L %d}[T %03d] access memory from 0x%llx to 0x%llx\n",
+    //    layer, idx, reinterpret_cast<long long>(data), reinterpret_cast<long long>(data + numel));
     while (numel > 0)
     {
         printf("{L %d}[T %03d] (%02d-%02d): %+.4f %+.4f %+.4f %+.4f %+.4f %+.4f %+.4f %+.4f %+.4f %+.4f %+.4f %+.4f %+.4f %+.4f %+.4f %+.4f\n",

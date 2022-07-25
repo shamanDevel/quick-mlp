@@ -6,6 +6,7 @@
 #include <Eigen/Core>
 
 #include <qmlp/fused_network.h>
+#include <qmlp/qmlp.h>
 
 #include "test_against_eigen.h"
 
@@ -15,15 +16,15 @@ using namespace qmlp::tests;
 TEMPLATE_TEST_CASE_SIG("test-against-eigen-2", "[eigen]", 
     ((int Channels0, int Channels1, bool Bias1, TestActivationType Activ1, int Channels2, bool Bias2, TestActivationType Activ2),
         Channels0, Channels1, Bias1, Activ1, Channels2, Bias2, Activ2),
-    (16, 16, false, TestActivationType::SINE, 16, false, TestActivationType::IDENTITY)
-    //(16, 16, false, TestActivationType::SINE, 16, false, TestActivationType::SINE),
-    //(16, 16, false, TestActivationType::RELU, 16, false, TestActivationType::IDENTITY),
-    //(16, 16, false, TestActivationType::SINE, 32, false, TestActivationType::SINE),
-    //(16, 16, false, TestActivationType::RELU, 32, false, TestActivationType::IDENTITY),
-    //(32, 48, false, TestActivationType::SINE, 16, false, TestActivationType::SINE),
-    //(32, 48, false, TestActivationType::RELU, 16, false, TestActivationType::IDENTITY),
-    //(32, 48, false, TestActivationType::SINE, 32, false, TestActivationType::SINE),
-    //(32, 48, false, TestActivationType::RELU, 32, false, TestActivationType::IDENTITY),
+    (16, 16, false, TestActivationType::SINE, 16, false, TestActivationType::IDENTITY),
+    (16, 16, false, TestActivationType::SINE, 16, false, TestActivationType::SINE),
+    (16, 16, false, TestActivationType::RELU, 16, false, TestActivationType::IDENTITY),
+    (16, 16, false, TestActivationType::SINE, 32, false, TestActivationType::SINE),
+    (16, 16, false, TestActivationType::RELU, 32, false, TestActivationType::IDENTITY),
+    (32, 48, false, TestActivationType::SINE, 16, false, TestActivationType::SINE),
+    (32, 48, false, TestActivationType::RELU, 16, false, TestActivationType::IDENTITY),
+    (32, 48, false, TestActivationType::SINE, 32, false, TestActivationType::SINE),
+    (32, 48, false, TestActivationType::RELU, 32, false, TestActivationType::IDENTITY)//,
     //(16, 16, true, TestActivationType::SINE, 16, true, TestActivationType::IDENTITY),
     //(16, 16, true, TestActivationType::SINE, 16, true, TestActivationType::SINE),
     //(16, 16, true, TestActivationType::RELU, 16, true, TestActivationType::IDENTITY),
@@ -65,12 +66,22 @@ TEMPLATE_TEST_CASE_SIG("test-against-eigen-2", "[eigen]",
     auto root = current.parent_path().parent_path();
     auto configFolder = root / "network_configs";
 
-    int N = 243;
+    int N = 77;
     CUstream stream = nullptr;
 
     //create network
+    QuickMLP::Instance().setDebugMode(false);
     auto network = std::make_shared<qmlp::FusedNetwork>(cfg, configFolder);
+    SECTION("parallel")
+    {
+        network->setParallelStreams(true);
+    }
+    SECTION("serial")
+    {
+        network->setParallelStreams(false);
+    }
     WARN("network parameters: " << network->networkParameterCount());
+    INFO("network parallel streams: " << network->isParallelStreams());
 
     //create parameter tensor
     std::default_random_engine rng(42);  // NOLINT(cert-msc51-cpp)
@@ -147,27 +158,27 @@ TEMPLATE_TEST_CASE_SIG("test-against-eigen-2", "[eigen]",
         EigenMatrixX out1 = TestActivation<Activ2>::forward(outTemp1);
         //backward
         EigenMatrixX adjOut1 = adjOutputHost.transpose();
-        std::cout << "adjOut1 = " << adjOut1.block(0, 0, adjOut1.rows(), 1).transpose() << "\n";
+        //std::cout << "adjOut1 = " << adjOut1.block(0, 0, adjOut1.rows(), 1).transpose() << "\n";
 
         EigenMatrixX adjOutTemp1 = TestActivation<Activ2>::adjoint(outTemp1, adjOut1);
         adjBias1Eigen = adjOutTemp1.rowwise().sum();
         adjWeights1Eigen = adjOutTemp1 * out0.transpose();
         EigenMatrixX adjOut0 = weights1.transpose() * adjOutTemp1;
 
-        std::cout << "adjOutTemp1 =\n" << adjOutTemp1.format(SmallFmt) << "\n";
-        std::cout << "out0^T = \n" << out0.transpose().eval().format(SmallFmt) << "\n";
+        //std::cout << "adjOutTemp1 =\n" << adjOutTemp1.format(SmallFmt) << "\n";
+        //std::cout << "out0^T = \n" << out0.transpose().eval().format(SmallFmt) << "\n";
         //std::cout << "adjOutTemp1 = " << adjOutTemp1.block(0, 0, adjOutTemp1.rows(), 1).transpose() << "\n";
-        std::cout << "adjOut0 = " << adjOut0.block(0, 0, adjOut0.rows(), 1).transpose() << "\n";
+        //std::cout << "adjOut0 = " << adjOut0.block(0, 0, adjOut0.rows(), 1).transpose() << "\n";
 
         EigenMatrixX adjOutTemp0 = TestActivation<Activ1>::adjoint(outTemp0, adjOut0);
         adjBias0Eigen = adjOutTemp0.rowwise().sum();
         adjWeights0Eigen = adjOutTemp0 * input.transpose();
         EigenMatrixX adjInput = weights0.transpose() * adjOutTemp0;
 
-        std::cout << "adjOutTemp0 =\n" << adjOutTemp0.format(SmallFmt) << "\n";
-        std::cout << "input^T = \n" << input.transpose().eval().format(SmallFmt) << "\n";
+        //std::cout << "adjOutTemp0 =\n" << adjOutTemp0.format(SmallFmt) << "\n";
+        //std::cout << "input^T = \n" << input.transpose().eval().format(SmallFmt) << "\n";
         //std::cout << "adjOutTemp0 = " << adjOutTemp0.block(0, 0, adjOutTemp0.rows(), 1).transpose() << "\n";
-        std::cout << "adjInput = " << adjInput.block(0, 0, adjInput.rows(), 1).transpose() << "\n";
+        //std::cout << "adjInput = " << adjInput.block(0, 0, adjInput.rows(), 1).transpose() << "\n";
 
         adjInputEigen = adjInput.transpose();
     }
@@ -179,12 +190,12 @@ TEMPLATE_TEST_CASE_SIG("test-against-eigen-2", "[eigen]",
         return qmlp::tests::adjointWithFlags(network, inputDevice, outputDevice, adjInputDevice, adjOutputDevice, flags, stream);
     };
 
-    //only input derivatives
-    {
-        int tmpSize = adjointWithFlags(qmlp::FusedNetwork::GRADIENTS_INPUT);
-        INFO("size of temporary memory: " << tmpSize);
-        COMPARE_TENSOR_AND_MATRIX(adjInputDevice, adjInputEigen);
-    }
+    ////only input derivatives
+    //{
+    //    int tmpSize = adjointWithFlags(qmlp::FusedNetwork::GRADIENTS_INPUT);
+    //    INFO("size of temporary memory: " << tmpSize);
+    //    COMPARE_TENSOR_AND_MATRIX(adjInputDevice, adjInputEigen);
+    //}
 
     //only weight derivatives
     {

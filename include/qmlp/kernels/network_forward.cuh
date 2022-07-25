@@ -44,6 +44,7 @@ __global__ void NetworkKernelInferenceAndForward(
     const int warpID = threadIdx.x / 32;
     const int lineID = threadIdx.x % 32;
     const int numWarps = blockDim.x / 32;
+    const int numel32 = roundUpPower2(numel, 32);
 
     constexpr int INPUT_PAD_START = $$INPUT_PAD_START$$;
     constexpr int CHANNELS_IN = $$CHANNELS_IN$$;

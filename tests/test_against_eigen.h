@@ -155,7 +155,7 @@ namespace tests{
         REQUIRE(actual.cols() == expected.cols());
         static const float REL_ERROR = 0.05f; //5%
         static const float ABS_ERROR = 1e-3f;
-        static const float ALLOWED_EXCEED = 0.05f; //5%
+        static const float ALLOWED_EXCEED = 0.07f; //7%
         int numExceed = 0;
         for (int i = 0; i < actual.rows(); ++i) for (int j = 0; j < actual.cols(); ++j)
         {

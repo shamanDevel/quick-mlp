@@ -68,7 +68,6 @@ struct OHatTmpLoader
     __device__ static void loadToShared(half* tmpShared, const input_t srcGlobal, int warpID, int numel)
     {
         //always load a full warp of 32 values.
-        assert(numel >= 32);
         //The network evaluation (forward+backward) pads half-filled last warps with zeros
 
         //CUDA can read 4 bytes at once -> use half2
@@ -183,13 +182,13 @@ struct HiddenLoader
 #pragma unroll
         for (int cin = 0; cin < NDiv16; ++cin)
         {
-            //TODO: check layout again
+            //note: load as row-major for transposing!
             assert(isAligned<8>(tmpShared + 16 * cin));
-            assert(isAligned<8>(tmpShared + 16 * cin + 16 * 32));
+            assert(isAligned<8>(tmpShared + 16 * cin + 16 * N));
 
             using namespace nvcuda::wmma;
-            load_matrix_sync(dst[0][cin], tmpShared + 16 * cin, 32);
-            load_matrix_sync(dst[1][cin], tmpShared + 16 * cin + 16 * 32, 32);
+            load_matrix_sync(dst[0][cin], tmpShared + 16 * cin, N);
+            load_matrix_sync(dst[1][cin], tmpShared + 16 * cin + 16 * N, N);
         }
         //run the activations again
         for (int j = 0; j < 2; ++j) {
@@ -460,14 +459,14 @@ __global__ void WeightUpdateSingleBlockKernel(
     for (int i=threadIdx.x; i<reduceBatches; i+=blockDim.x)
     {
         AccuT accu = cSharedBlock[i];
-#if DEBUG_PRINT==1
-        printf("cShared[%03d,000]=%.4f\n", i, accu);
-#endif
+//#if DEBUG_PRINT==1
+//        printf("cShared[%03d,000]=%.4f\n", i, accu);
+//#endif
         for (int j = 1; j < reduceElements; ++j) {
             accu += cSharedBlock[i + j * reduceBatches];
-#if DEBUG_PRINT==1
-            printf("cShared[%03d,%03d]=%.4f\n", i, j, cSharedBlock[i + j * reduceBatches]);
-#endif
+//#if DEBUG_PRINT==1
+//            printf("cShared[%03d,%03d]=%.4f\n", i, j, cSharedBlock[i + j * reduceBatches]);
+//#endif
         }
         //write the matrix back to global memory
         outAdjWeights[i] += accu;
