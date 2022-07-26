@@ -7,7 +7,6 @@
 
 #include <qmlp/activation.h>
 #include <qmlp/qmlp.h>
-#include "bindings.h"
 
 
 struct ActivationCache

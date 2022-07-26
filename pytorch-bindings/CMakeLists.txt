@@ -57,42 +57,51 @@ message(STATUS "Torch: include directories: ${TORCH_INCLUDE_DIR}")
 
 # your configuration
 set(BINDINGS_FILES
-    bind_activation.h
-    bind_activation.cpp
-    bind_encoding.h
-    bind_encoding.cpp
-	bindings.cpp
-	)
+    qmlp/bindings.h
+    src/bind_activation.h
+    src/bind_activation.cpp
+    src/bind_encoding.h
+    src/bind_encoding.cpp
+    src/bindings.cpp
+    )
 
 # create the python extension
 # Note: it must be the same name as the Python module, hence only 'qmlp-py'
-add_library(qmlp-py SHARED
-	${BINDINGS_FILES}
-	)
+if (QUICKMLP_PYTORCH_BINDINGS_SHARED)
+    add_library(qmlp-py SHARED
+        ${BINDINGS_FILES}
+        )
+else()
+    add_library(qmlp-py STATIC
+        ${BINDINGS_FILES}
+        )
+endif()
 add_library(qmlp::qmlp-py ALIAS qmlp-py) # to match exported target
 target_include_directories(qmlp-py
-	PRIVATE ${TORCH_INCLUDE_DIR} ${PYTHON_INCLUDE_DIR}
-	)
+    PRIVATE ${TORCH_INCLUDE_DIR} ${PYTHON_INCLUDE_DIR}
+    )
 target_link_libraries(qmlp-py
-	PRIVATE 
+    PRIVATE 
     qmlp-library
-	${TORCH_LIBRARIES} ${PYTHON_LIBRARY})
+    ${TORCH_LIBRARIES} ${PYTHON_LIBRARY})
 set_target_properties(qmlp-py PROPERTIES
     CXX_STANDARD 17
     CXX_STANDARD_REQUIRED YES
     CXX_EXTENSIONS NO
 )
 set_property(TARGET qmlp-py PROPERTY CUDA_ARCHITECTURES 61 72)
+target_include_directories(qmlp-py PUBLIC ${CMAKE_CURRENT_LIST_DIR})
 
 message(STATUS "Binding output: ${CMAKE_SOURCE_DIR}/bin/${PYTHON_MODULE_PREFIX}${BINDINGS_NAME}${PYTHON_MODULE_EXTENSION}")
+if (QUICKMLP_PYTORCH_BINDINGS_SHARED)
 add_custom_command(TARGET qmlp-py
-	POST_BUILD
-	COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_SOURCE_DIR}/bin
-	COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:qmlp-py> ${CMAKE_SOURCE_DIR}/bin/qmlp${CMAKE_SHARED_LIBRARY_SUFFIX}
-	
-	COMMENT "Copies the python extension to bin/"
-	WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/..
-	
-	VERBATIM
-	)
-
+    POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_SOURCE_DIR}/bin
+    COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:qmlp-py> ${CMAKE_SOURCE_DIR}/bin/qmlp${CMAKE_SHARED_LIBRARY_SUFFIX}
+    
+    COMMENT "Copies the python extension to bin/"
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/..
+    
+    VERBATIM
+    )
+endif()

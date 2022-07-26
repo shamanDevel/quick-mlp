@@ -1,4 +1,4 @@
-#include "bindings.h"
+#include <qmlp/bindings.h>
 
 #include <torch/extension.h>
 #include <torch/types.h>
@@ -13,6 +13,7 @@
 #include "bind_activation.h"
 #include "bind_encoding.h"
 
+QUICKMLP_NAMESPACE_BEGIN
 QUICKMLP_NAMESPACE::Tensor wrap(const torch::Tensor& t)
 {
     if (!t.is_cuda())
@@ -31,6 +32,7 @@ QUICKMLP_NAMESPACE::Tensor wrap(const torch::Tensor& t)
 
     return QUICKMLP_NAMESPACE::Tensor( t.data_ptr(), p, sizes, strides );
 }
+QUICKMLP_NAMESPACE_END
 
 struct QuickMLPBindings : public torch::CustomClassHolder
 {
@@ -40,6 +42,11 @@ struct QuickMLPBindings : public torch::CustomClassHolder
     }
 };
 
+namespace
+{
+    bool BindingsInitialized = false;
+}
+
 TORCH_LIBRARY(qmlp, m)
 {
     m.class_<QuickMLPBindings>("QuickMLP")
@@ -48,4 +55,22 @@ TORCH_LIBRARY(qmlp, m)
 
     bindActivation(m);
     bindEncoding(m);
+
+    std::cout << "QuickMLP bindings loaded" << std::endl;
+    BindingsInitialized = true;
 }
+
+QUICKMLP_NAMESPACE_BEGIN
+
+void InitBindings()
+{
+    //the static initializer in TORCH_LIBRARY should have been called.
+    //Check it
+    if (!BindingsInitialized)
+    {
+        std::cerr << "QuickMLP bindings not loaded!!" << std::endl;
+        throw std::runtime_error("QuickMLP bindings not loaded!!");
+    }
+}
+
+QUICKMLP_NAMESPACE_END

@@ -26,8 +26,8 @@ torch::Tensor EncodingBindings::inference(const torch::Tensor& input) const
     TORCH_CHECK(!hasParameters(), "Encoding has parameters, call the variation of 'inference' with parameters");
     torch::Tensor output = createOutputTensor(input, a_->numOutputChannels());
 
-    auto inputWrapped = wrap(input);
-    auto outputWrapped = wrap(output);
+    auto inputWrapped = QUICKMLP_NAMESPACE::wrap(input);
+    auto outputWrapped = QUICKMLP_NAMESPACE::wrap(output);
     CUstream stream = c10::cuda::getCurrentCUDAStream();
     a_->forward(inputWrapped, outputWrapped, stream, {});
 
@@ -40,9 +40,9 @@ torch::Tensor EncodingBindings::inferenceWithParameter(const torch::Tensor& inpu
     TORCH_CHECK(hasParameters(), "Encoding doesn't have parameters, call the variation of 'inference' without parameters");
     torch::Tensor output = createOutputTensor(input, a_->numOutputChannels());
 
-    auto inputWrapped = wrap(input);
-    auto paramWrapped = wrap(parameterForward);
-    auto outputWrapped = wrap(output);
+    auto inputWrapped = QUICKMLP_NAMESPACE::wrap(input);
+    auto paramWrapped = QUICKMLP_NAMESPACE::wrap(parameterForward);
+    auto outputWrapped = QUICKMLP_NAMESPACE::wrap(output);
     CUstream stream = c10::cuda::getCurrentCUDAStream();
     a_->forward(inputWrapped, outputWrapped, stream, paramWrapped);
 
@@ -54,9 +54,9 @@ torch::Tensor EncodingBindings::adjoint(const torch::Tensor& input, const torch:
     TORCH_CHECK(!hasParameters(), "Encoding has parameters, call the variation of 'adjoint' with parameters");
     torch::Tensor adjInput = torch::zeros_like(input);
 
-    auto inputWrapped = wrap(input);
-    auto adjOutputWrapped = wrap(adjOutput);
-    auto adjInputWrapped = wrap(adjInput);
+    auto inputWrapped = QUICKMLP_NAMESPACE::wrap(input);
+    auto adjOutputWrapped = QUICKMLP_NAMESPACE::wrap(adjOutput);
+    auto adjInputWrapped = QUICKMLP_NAMESPACE::wrap(adjInput);
     CUstream stream = c10::cuda::getCurrentCUDAStream();
     a_->adjoint(inputWrapped, adjOutputWrapped, adjInputWrapped, stream, 
         {}, {}, qmlp::IEncoding::ALL_GRADIENTS);
@@ -76,11 +76,11 @@ std::tuple<torch::Tensor, torch::Tensor> EncodingBindings::adjointWithParameterA
     torch::Tensor adjInput = torch::zeros_like(input);
     torch::Tensor adjParam = torch::zeros_like(parameterForward);
 
-    auto inputWrapped = wrap(input);
-    auto paramWrapped = wrap(parameterForward);
-    auto adjOutputWrapped = wrap(adjOutput);
-    auto adjInputWrapped = wrap(adjInput);
-    auto adjParamWrapped = wrap(adjParam);
+    auto inputWrapped = QUICKMLP_NAMESPACE::wrap(input);
+    auto paramWrapped = QUICKMLP_NAMESPACE::wrap(parameterForward);
+    auto adjOutputWrapped = QUICKMLP_NAMESPACE::wrap(adjOutput);
+    auto adjInputWrapped = QUICKMLP_NAMESPACE::wrap(adjInput);
+    auto adjParamWrapped = QUICKMLP_NAMESPACE::wrap(adjParam);
     CUstream stream = c10::cuda::getCurrentCUDAStream();
     a_->adjoint(inputWrapped, adjOutputWrapped, adjInputWrapped, stream,
         paramWrapped, adjParamWrapped, flags);
