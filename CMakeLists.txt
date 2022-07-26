@@ -210,19 +210,19 @@ endif()
 
 # This section builds targets
 # Non-IMPORT targets cannot be defined twice
-if(NOT TARGET qmlp)
+if(NOT TARGET qmlp-library)
   # Build the headers-only target (no Python included):
   # (long name used here to keep this from clashing in subdirectory mode)
   if (QUICKMLP_SHARED)
-    add_library(qmlp SHARED
+    add_library(qmlp-library SHARED
         ${QUICKMLP_HEADERS} ${QUICKMLP_RESOURCES} ${QUICKMLP_SOURCES})
   else()
-    add_library(qmlp STATIC
+    add_library(qmlp-library STATIC
         ${QUICKMLP_HEADERS} ${QUICKMLP_RESOURCES} ${QUICKMLP_SOURCES})
   endif()
-  add_library(qmlp::qmlp ALIAS qmlp) # to match exported target
+  add_library(qmlp::qmlp-library ALIAS qmlp-library) # to match exported target
 
-  set_target_properties(qmlp PROPERTIES
+  set_target_properties(qmlp-library PROPERTIES
         CXX_STANDARD 17
         CXX_STANDARD_REQUIRED YES
         CXX_EXTENSIONS NO
@@ -230,12 +230,12 @@ if(NOT TARGET qmlp)
   source_group("CUDA" REGULAR_EXPRESSION ".*\.cuh")
 
   target_include_directories(
-    qmlp ${qmlp_system} PUBLIC ${qmlp_INCLUDE_DIR})
-  target_include_directories(qmlp PRIVATE 
+    qmlp-library ${qmlp_system} PUBLIC ${qmlp_INCLUDE_DIR})
+  target_include_directories(qmlp-library PRIVATE 
     ${CMAKE_CURRENT_BINARY_DIR} third-party/tinyformat)
 
   # CUDA Stuff
-  target_link_libraries(qmlp 
+  target_link_libraries(qmlp-library 
     PUBLIC
         CUDA::cudart 
         ckl::ckl 

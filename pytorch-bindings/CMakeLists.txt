@@ -65,28 +65,30 @@ set(BINDINGS_FILES
 	)
 
 # create the python extension
-add_library(qmlp-pytorch-bindings SHARED
+# Note: it must be the same name as the Python module, hence only 'qmlp-py'
+add_library(qmlp-py SHARED
 	${BINDINGS_FILES}
 	)
-target_include_directories(qmlp-pytorch-bindings
+add_library(qmlp::qmlp-py ALIAS qmlp-py) # to match exported target
+target_include_directories(qmlp-py
 	PRIVATE ${TORCH_INCLUDE_DIR} ${PYTHON_INCLUDE_DIR}
 	)
-target_link_libraries(qmlp-pytorch-bindings
+target_link_libraries(qmlp-py
 	PRIVATE 
-    qmlp
+    qmlp-library
 	${TORCH_LIBRARIES} ${PYTHON_LIBRARY})
-set_target_properties(qmlp-pytorch-bindings PROPERTIES
+set_target_properties(qmlp-py PROPERTIES
     CXX_STANDARD 17
     CXX_STANDARD_REQUIRED YES
     CXX_EXTENSIONS NO
 )
-set_property(TARGET qmlp-pytorch-bindings PROPERTY CUDA_ARCHITECTURES 61 72)
+set_property(TARGET qmlp-py PROPERTY CUDA_ARCHITECTURES 61 72)
 
 message(STATUS "Binding output: ${CMAKE_SOURCE_DIR}/bin/${PYTHON_MODULE_PREFIX}${BINDINGS_NAME}${PYTHON_MODULE_EXTENSION}")
-add_custom_command(TARGET qmlp-pytorch-bindings
+add_custom_command(TARGET qmlp-py
 	POST_BUILD
 	COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_SOURCE_DIR}/bin
-	COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:qmlp-pytorch-bindings> ${CMAKE_SOURCE_DIR}/bin/${qmlp-pytorch-bindings}
+	COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:qmlp-py> ${CMAKE_SOURCE_DIR}/bin/qmlp${CMAKE_SHARED_LIBRARY_SUFFIX}
 	
 	COMMENT "Copies the python extension to bin/"
 	WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/..

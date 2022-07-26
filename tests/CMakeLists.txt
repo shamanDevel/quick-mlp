@@ -42,7 +42,7 @@ set_target_properties(qmlp-tests PROPERTIES
 )
 
 target_link_libraries(qmlp-tests
-    PRIVATE qmlp::qmlp CUDA::cudart)
+    PRIVATE qmlp::qmlp-library CUDA::cudart)
     
 # Eigen
 set(BUILD_TESTING OFF)
