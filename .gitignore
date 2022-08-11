@@ -45,3 +45,4 @@ pybind11Targets.cmake
 /docs/_build/*
 .ipynb_checkpoints/
 /pytorch-tests/.idea
+/pytorch-tests/output
