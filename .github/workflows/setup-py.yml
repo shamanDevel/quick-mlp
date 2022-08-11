@@ -1,0 +1,17 @@
+name: C/C++ CI
+
+on:
+  push:
+    branches: [ "master" ]
+  pull_request:
+    branches: [ "master" ]
+
+jobs:
+  build:
+
+    runs-on: pytorch/pytorch:1.12.1-cuda11.3-cudnn8-devel
+
+    steps:
+    - uses: actions/checkout@v3
+    - name: make
+      run: sh compile-library-server.sh
