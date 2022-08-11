@@ -1,0 +1,13 @@
+image: pytorch/pytorch:1.12.1-cuda11.3-cudnn8-devel
+
+before_script:
+  - apt-get update && apt-get install -y --no-install-recommends doxygen
+
+stages:
+  - build
+
+compile:
+  stage: build
+  script:
+  - sh compile-library-server.sh
+  
