@@ -9,6 +9,7 @@
 
 #include <qmlp/activation.h>
 #include <qmlp/qmlp.h>
+#include <qmlp/bindings.h>
 
 QUICKMLP_NAMESPACE::Activation_ptr ActivationCache::create(const std::string& cfg)
 {
@@ -28,8 +29,8 @@ torch::Tensor ActivationBindings::inference(const torch::Tensor& input) const
 {
     torch::Tensor output = torch::empty_like(input);
 
-    auto inputWrapped = wrap(input);
-    auto outputWrapped = wrap(output);
+    auto inputWrapped = QUICKMLP_NAMESPACE::wrap(input);
+    auto outputWrapped = QUICKMLP_NAMESPACE::wrap(output);
     CUstream stream = c10::cuda::getCurrentCUDAStream();
     a_->forward(inputWrapped, outputWrapped, stream);
 
@@ -40,9 +41,9 @@ torch::Tensor ActivationBindings::adjoint(const torch::Tensor& input, const torc
 {
     torch::Tensor adjInput = torch::empty_like(input);
 
-    auto inputWrapped = wrap(input);
-    auto adjOutputWrapped = wrap(adjOutput);
-    auto adjInputWrapped = wrap(adjInput);
+    auto inputWrapped = QUICKMLP_NAMESPACE::wrap(input);
+    auto adjOutputWrapped = QUICKMLP_NAMESPACE::wrap(adjOutput);
+    auto adjInputWrapped = QUICKMLP_NAMESPACE::wrap(adjInput);
     CUstream stream = c10::cuda::getCurrentCUDAStream();
     a_->adjoint(inputWrapped, adjOutputWrapped, adjInputWrapped, stream);
 

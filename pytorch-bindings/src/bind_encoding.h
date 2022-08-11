@@ -7,7 +7,7 @@
 
 #include <qmlp/iencoding.h>
 #include <qmlp/qmlp.h>
-#include "bindings.h"
+#include <qmlp/bindings.h>
 
 
 class EncodingBindings : public torch::CustomClassHolder

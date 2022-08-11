@@ -6,4 +6,10 @@
 #include <qmlp/qmlp.h>
 #include <qmlp/tensor.h>
 
+QUICKMLP_NAMESPACE_BEGIN
+
 QUICKMLP_NAMESPACE::Tensor wrap(const torch::Tensor& t);
+
+void InitBindings();
+
+QUICKMLP_NAMESPACE_END

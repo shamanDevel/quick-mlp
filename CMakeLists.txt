@@ -90,6 +90,7 @@ endif()
 option(QUICKMLP_TEST "Build qmlp test suite?" ${QUICKMLP_MASTER_PROJECT})
 option(QUICKMLP_SHARED "Build qmlp as a shared library?" OFF)
 option(QUICKMLP_PYTORCH_BINDINGS "Build PyTorch bindings?" OFF)
+option(QUICKMLP_PYTORCH_BINDINGS_SHARED "Build PyTorch bindings as a shared library?. Dynamic loading in python requires this." ON)
 
 # CUDA toolkit
 find_package(CUDAToolkit REQUIRED)
