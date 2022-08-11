@@ -1,3 +1,5 @@
+#pragma once
+
 #include <torch/extension.h>
 #include <torch/types.h>
 #include <torch/script.h>
@@ -7,7 +9,7 @@
 
 #include <qmlp/iencoding.h>
 #include <qmlp/qmlp.h>
-#include <qmlp/bindings.h>
+#include "../qmlp/bindings.h"
 
 
 class EncodingBindings : public torch::CustomClassHolder

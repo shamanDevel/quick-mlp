@@ -9,7 +9,6 @@
 
 #include <qmlp/activation.h>
 #include <qmlp/qmlp.h>
-#include <qmlp/bindings.h>
 
 QUICKMLP_NAMESPACE::Activation_ptr ActivationCache::create(const std::string& cfg)
 {

@@ -1,3 +1,5 @@
+#pragma once
+
 #include <torch/extension.h>
 #include <torch/types.h>
 #include <torch/script.h>
@@ -5,8 +7,9 @@
 
 #include <unordered_map>
 
-#include <qmlp/activation.h>
+#include "../qmlp/bindings.h"
 #include <qmlp/qmlp.h>
+#include <qmlp/activation.h>
 
 
 struct ActivationCache

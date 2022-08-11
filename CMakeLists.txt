@@ -117,6 +117,7 @@ set(QUICKMLP_HEADERS
     include/qmlp/errors.h
     include/qmlp/tensor.h
     include/qmlp/tmp_memory.h
+    include/qmlp/utils.h
     )
     
 set(QUICKMLP_RESOURCES
@@ -136,6 +137,7 @@ set(QUICKMLP_RESOURCES
     include/qmlp/kernels/network_weight_update_block.cuh
     include/qmlp/kernels/activation_kernels.cuh
     include/qmlp/kernels/encoding_kernels.cuh
+    include/qmlp/kernels/pullpush.cuh
 )
 
 set(QUICKMLP_SOURCES
@@ -147,6 +149,7 @@ set(QUICKMLP_SOURCES
     src/encoding_line_integration.cpp
     src/iencoding.cpp
     src/fused_network.cpp
+    src/utils.cpp
     )
 
 # Compare with grep and warn if mismatched

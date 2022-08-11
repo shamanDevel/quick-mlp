@@ -62,6 +62,8 @@ set(BINDINGS_FILES
     src/bind_activation.cpp
     src/bind_encoding.h
     src/bind_encoding.cpp
+    src/bind_utils.h
+    src/bind_utils.cpp
     src/bindings.cpp
     )
 

@@ -24,7 +24,7 @@ class Tensor
 public:
     enum Precision
     {
-        FLOAT, HALF
+        FLOAT, HALF, DOUBLE, _NUM_PRECISION_
     };
     static const int BytesPerEntry[];
     static const std::string DatatypePerEntry[];
@@ -134,6 +134,15 @@ public:
         return n;
     }
 
+    [[nodiscard]] int64_t numBytes() const
+    {
+        int64_t lastIdx = 0;
+        for (int i = 0; i < ndim_; ++i)
+            lastIdx += strides_[i] * (sizes_[i] - 1);
+        size_t count = (lastIdx + 1) * BytesPerEntry[precision_];
+        return count;
+    }
+
     template<int N>
     [[nodiscard]] int64_t idx(const std::array<int32_t, N>& indices) const
     {
@@ -215,6 +224,18 @@ public:
     }
 
     /**
+     * Copies the data of 'src' into 'this'.
+     * Size, stride, precision must match
+     */
+    void copy_(const Tensor& src);
+
+    /**
+     * Copies the data of 'src' into 'this'.
+     * Size, stride, precision must match
+     */
+    void copyAsync_(const Tensor& src, CUstream stream);
+
+    /**
      * Returns the kernel accessor from this.
      * \tparam Accessor the accessor type, e.g. qmlp::kernel::Tensor3RW
      */
@@ -237,6 +258,38 @@ public:
     }
 };
 
+#define QUICKMLP_DISPATCH_SWITCH(PRECISON, NAME, ...)                                   \
+  [&] {                                                                             \
+    const auto& the_precision = PRECISON;                                           \
+    constexpr const char* at_dispatch_name = NAME;                                  \
+    switch (the_precision) {                                                        \
+      __VA_ARGS__                                                                   \
+      default:                                                                      \
+        throw QUICKMLP_NAMESPACE::configuration_error("\"%s\" not implemented for %s",  \
+            at_dispatch_name, QUICKMLP_NAMESPACE::Tensor::NamePerEntry[the_precision]); \
+    }                                                                               \
+  }()
 
+#define QUICKMLP_DISPATCH_CASE(precision, dtype, ...)                           \
+    case precision: {                                                       \
+        using scalar_t = dtype;                                             \
+        return __VA_ARGS__();                                               \
+    }
+
+#define QUICKMLP_PRIVATE_DISPATCH_CASE_FLOATING_TYPES(...)            \
+  QUICKMLP_DISPATCH_CASE(QUICKMLP_NAMESPACE::Tensor::Precision::DOUBLE, double, __VA_ARGS__) \
+  QUICKMLP_DISPATCH_CASE(QUICKMLP_NAMESPACE::Tensor::Precision::FLOAT, float, __VA_ARGS__)
+
+#define QUICKMLP_DISPATCH_FLOATING_TYPES(TYPE, NAME, ...) \
+  QUICKMLP_DISPATCH_SWITCH(TYPE, NAME, QUICKMLP_PRIVATE_DISPATCH_CASE_FLOATING_TYPES(__VA_ARGS__))
+
+#define QUICKMLP_PRIVATE_DISPATCH_CASE_FLOATING_TYPES_AND_HALF(...)   \
+  QUICKMLP_DISPATCH_CASE(QUICKMLP_NAMESPACE::Tensor::Precision::DOUBLE, double, __VA_ARGS__) \
+  QUICKMLP_DISPATCH_CASE(QUICKMLP_NAMESPACE::Tensor::Precision::FLOAT, float, __VA_ARGS__)  \
+  QUICKMLP_DISPATCH_CASE(QUICKMLP_NAMESPACE::Tensor::Precision::HALF, half, __VA_ARGS__)
+
+#define QUICKMLP_DISPATCH_FLOATING_TYPES_AND_HALF(TYPE, NAME, ...) \
+  QUICKMLP_DISPATCH_SWITCH(                                        \
+      TYPE, NAME, QUICKMLP_PRIVATE_DISPATCH_CASE_FLOATING_TYPES_AND_HALF(__VA_ARGS__))
 
 QUICKMLP_NAMESPACE_END

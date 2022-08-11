@@ -1,4 +1,4 @@
-#include <qmlp/bindings.h>
+#include "../qmlp/bindings.h"
 
 #include <torch/extension.h>
 #include <torch/types.h>
@@ -12,6 +12,7 @@
 
 #include "bind_activation.h"
 #include "bind_encoding.h"
+#include "bind_utils.h"
 
 QUICKMLP_NAMESPACE_BEGIN
 QUICKMLP_NAMESPACE::Tensor wrap(const torch::Tensor& t)
@@ -55,6 +56,7 @@ TORCH_LIBRARY(qmlp, m)
 
     bindActivation(m);
     bindEncoding(m);
+    bindUtils(m);
 
     std::cout << "QuickMLP bindings loaded" << std::endl;
     BindingsInitialized = true;

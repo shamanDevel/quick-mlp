@@ -15,9 +15,9 @@ namespace internal
     };
 }
 
-const int Tensor::BytesPerEntry[] = { 4, 2 };
-const std::string Tensor::DatatypePerEntry[] = { "float", "half"};
-const std::string Tensor::NamePerEntry[] = { "FLOAT", "HALF" };
+const int Tensor::BytesPerEntry[] = { 4, 2, 8 };
+const std::string Tensor::DatatypePerEntry[] = { "float", "half", "double"};
+const std::string Tensor::NamePerEntry[] = { "FLOAT", "HALF", "DOUBLE"};
 
 Tensor::Tensor(Precision precision, const std::vector<int32_t>& sizes)
   : hostsData_(true)
@@ -65,11 +65,36 @@ void* Tensor::rawPtr()
 
 void Tensor::zero_()
 {
-    int64_t lastIdx = 0;
-    for (int i = 0; i < ndim_; ++i)
-        lastIdx += strides_[i] * (sizes_[i] - 1);
-    size_t count = (lastIdx + 1) * BytesPerEntry[precision_];
+    size_t count = numBytes();
     CKL_SAFE_CALL(cudaMemset(rawPtr(), 0, count));
+}
+
+void Tensor::copy_(const Tensor& src)
+{
+    CHECK_DIM(src, ndim());
+    for (int d = 0; d < ndim(); ++d) {
+        CHECK_SIZE(src, d, size(d));
+        CHECK_ERROR(src.strides()[d] == strides()[d], "Strides must match!");
+    }
+    CHECK_DTYPE(src, precision());
+
+    //now perform a simple memcpy
+    size_t count = numBytes();
+    CKL_SAFE_CALL(cudaMemcpy(rawPtr(), src.rawPtr(), count, cudaMemcpyDeviceToDevice));
+}
+
+void Tensor::copyAsync_(const Tensor& src, CUstream stream)
+{
+    CHECK_DIM(src, ndim());
+    for (int d = 0; d < ndim(); ++d) {
+        CHECK_SIZE(src, d, size(d));
+        CHECK_ERROR(src.strides()[d] == strides()[d], "Strides must match!");
+    }
+    CHECK_DTYPE(src, precision());
+
+    //now perform a simple memcpy
+    size_t count = numBytes();
+    CKL_SAFE_CALL(cudaMemcpyAsync(rawPtr(), src.rawPtr(), count, cudaMemcpyDeviceToDevice, stream));
 }
 
 QUICKMLP_NAMESPACE_END
