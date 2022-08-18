@@ -17,7 +17,6 @@ jobs:
     - name: Install CUDA + Python + PyTorch
       run: |
         sudo apt-get update
-        sudo apt-get install python
         sudo pip3 install torch torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/cu116
         sudo pip3 install setuptools
     - name: make
