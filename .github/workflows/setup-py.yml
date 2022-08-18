@@ -9,9 +9,15 @@ on:
 jobs:
   build:
 
-    runs-on: pytorch/pytorch:1.12.1-cuda11.3-cudnn8-devel
+    runs-on: ubuntu-20.04
 
     steps:
-    - uses: actions/checkout@v3
+    - name: Check out repository code
+      uses: actions/checkout@v3
+    - name: Install CUDA + Python + PyTorch
+      run: |
+        sudo apt-get update
+        sudo apt-get install python
+        sudo pip3 install torch torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/cu116
     - name: make
       run: sh compile-library-server.sh
