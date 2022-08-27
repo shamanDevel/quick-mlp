@@ -37,6 +37,8 @@ Second, the PyTorch bindings in `pytorch-bindings` contains interface code to us
 - C++17-compatible compiler (tested with MSVC2019 and GCC 9.4.0)
 - PyTorch, tested with version 1.11, but should work with newer as well
 
+Don't forget to clone this repository with submodules (`git clone --recurse-submodules`). Or if you forgot to clone with submodules, you can initialize them afterwards with `git submodule init & git submodule update`.
+
 #### Compilation
 
 Compiling the stand-along library (no PyTorch) for C++-projects: Use CMake!
@@ -59,7 +61,7 @@ import torch # Run in Python
 torch.classes.load_library('bin/qmlp.so') # path to the library
 ```
 
-
+To run the Python examples, you'll additionally need the packages `pytest`, `imageio`, `matplotlib`, and `tqdm`.
 
 ## Python-API Documentation
 
