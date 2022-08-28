@@ -154,7 +154,7 @@ struct HiddenLoader
         const half2* src = reinterpret_cast<const half2*>(srcGlobal + warpID*32*N);
         half2* dst = reinterpret_cast<half2*>(tmpShared);
 
-        //now load 32*M entries, linear in memory. Layout does not matter here
+        //now load 32*N entries, linear in memory. Layout does not matter here
         __syncwarp();
         const int lineID = threadIdx.x % 32;
         static constexpr int N2 = NDiv16 * 8; //number of half2 entries
@@ -187,8 +187,8 @@ struct HiddenLoader
             assert(isAligned<8>(tmpShared + 16 * cin + 16 * N));
 
             using namespace nvcuda::wmma;
-            load_matrix_sync(dst[0][cin], tmpShared + 16 * cin, N);
-            load_matrix_sync(dst[1][cin], tmpShared + 16 * cin + 16 * N, N);
+            load_matrix_sync(dst[0][cin], tmpShared + 16 * cin, N); //TODO: are the strides correct?
+            load_matrix_sync(dst[1][cin], tmpShared + 16 * cin + 16 * N, N); //compare to how the Layer stores the intermediate results
         }
         //run the activations again
         for (int j = 0; j < 2; ++j) {
@@ -379,9 +379,12 @@ __global__ void WeightUpdateSingleBlockKernel(
     //This is the memory that must be provided by the host code:
     [[maybe_unused]]
     constexpr int SharedBytesPerWarp = max(SharedBytesPerWarp_Input, SharedBytesPerWarp_Output);
-    if (threadIdx.x == 0)
+#if DEBUG_PRINT==1
+    if (threadIdx.x == 0) {
         printf("SharedBytesPerWarp_Input=%d, SharedBytesPerWarp_Output=%d\n",
             SharedBytesPerWarp_Input, SharedBytesPerWarp_Output);
+    }
+#endif
 
     extern __shared__ char sIntermediate[];
 
