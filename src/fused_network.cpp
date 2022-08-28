@@ -147,6 +147,7 @@ FusedNetwork::FusedNetwork(const nlohmann::json& cfg, const std::filesystem::pat
 
     //prefix sum for the offsets of weight + bias
     //First are all weights, then all biases
+    numParameters_ = 0;
     for (auto& specs : layers_)
     {
         specs.weightsStart = numParameters_;
@@ -154,8 +155,13 @@ FusedNetwork::FusedNetwork(const nlohmann::json& cfg, const std::filesystem::pat
     }
     for (auto& specs : layers_)
     {
-        specs.biasStart = numParameters_;
-        numParameters_ += specs.channelsOut;
+        if (specs.useBias) {
+            specs.biasStart = numParameters_;
+            numParameters_ += specs.channelsOut;
+        } else
+        {
+            specs.biasStart = 0;
+        }
     }
 
     //create info for training
@@ -276,7 +282,7 @@ Tensor FusedNetwork::networkParameter(int layer, bool bias, void* rawPtr, Tensor
     {
         if (!l.useBias) return {};
         return Tensor(
-            data + bytesPerEntry * l.biasStart,
+            data + static_cast<ptrdiff_t>(bytesPerEntry * l.biasStart),
             precision,
             { l.channelsOut }, { 1 }
         );
@@ -285,7 +291,7 @@ Tensor FusedNetwork::networkParameter(int layer, bool bias, void* rawPtr, Tensor
     {
         //row-major
         return Tensor(
-            data + bytesPerEntry * l.weightsStart,
+            data + static_cast<ptrdiff_t>(bytesPerEntry * l.weightsStart),
             precision,
             { l.channelsOut, l.channelsIn }, { l.channelsIn, 1 }
         );
@@ -1024,8 +1030,8 @@ void FusedNetwork::adjoint(const Tensor& input, const Tensor& adjOutput, Adjoint
 
             //assemble parameter pointers
             void* outAdjWeights = static_cast<char*>(parametersGradients_.rawPtr()) +
-                parametersGradients_.bytesPerEntry() * ls.weightsStart;
-            half* aIn = static_cast<half*>(tmpMemoryAdjoint) + (ali.offsetAdjOut * numel32);
+                static_cast<ptrdiff_t>(parametersGradients_.bytesPerEntry() * ls.weightsStart);
+            half* aIn = static_cast<half*>(tmpMemoryAdjoint) + static_cast<ptrdiff_t>(ali.offsetAdjOut * numel32);
 
             //launch kernel
             CUstream layerStream;
@@ -1042,7 +1048,7 @@ void FusedNetwork::adjoint(const Tensor& input, const Tensor& adjOutput, Adjoint
                 ck.sharedMemorySize << std::endl;
             if (ali.offsetIn>=0)
             {
-                const half* bIn = static_cast<const half*>(tmpMemoryForward) + (ali.offsetIn * numel32);
+                const half* bIn = static_cast<const half*>(tmpMemoryForward) + static_cast<ptrdiff_t>(ali.offsetIn * numel32);
                 ck.fun.call(gridSize, ck.blockSize, ck.sharedMemorySize, layerStream,
                     numel, outAdjWeights, aIn, bIn);
             }
