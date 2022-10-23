@@ -243,6 +243,7 @@ struct Layer
         //Perform computation in shared memory, directly in adjStatesInout,
         //Use the inputs from intermediateResultsIn.
         const int lineID = threadIdx.x % 32;
+        __syncwarp();
         for (int cout=0; cout<OutChannels; ++cout)
         {
             half activationInput = intermediateResultsIn[cout + OutChannels * lineID];

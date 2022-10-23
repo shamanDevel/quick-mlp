@@ -25,21 +25,24 @@ using namespace qmlp::tests;
 TEMPLATE_TEST_CASE_SIG("test-against-eigen-1", "[eigen]",
     ((int Channels0, int Channels1, bool Bias1, TestActivationType Activ1),
         Channels0, Channels1, Bias1, Activ1),
-    (16, 16, false, TestActivationType::SINE),
-    (16, 16, false, TestActivationType::RELU),
-    (16, 16, false, TestActivationType::IDENTITY),
-    (16, 32, false, TestActivationType::SINE),
-    (16, 32, false, TestActivationType::RELU),
-    (16, 32, false, TestActivationType::IDENTITY),
-    (48, 16, false, TestActivationType::SINE),
-    (48, 16, false, TestActivationType::RELU),
-    (48, 16, false, TestActivationType::IDENTITY),
-    (48, 32, false, TestActivationType::SINE),
-    (48, 32, false, TestActivationType::RELU),
-    (48, 32, false, TestActivationType::IDENTITY),
-    (16, 48, false, TestActivationType::SINE),
-    (16, 48, false, TestActivationType::RELU),
-    (16, 48, false, TestActivationType::IDENTITY),
+    //(16, 16, false, TestActivationType::SINE),
+    //(16, 16, false, TestActivationType::RELU),
+    //(16, 16, false, TestActivationType::IDENTITY),
+    //(16, 32, false, TestActivationType::SINE),
+    //(16, 32, false, TestActivationType::RELU),
+    //(16, 32, false, TestActivationType::IDENTITY),
+    //(48, 16, false, TestActivationType::SINE),
+    //(48, 16, false, TestActivationType::RELU),
+    //(48, 16, false, TestActivationType::IDENTITY),
+    //(48, 32, false, TestActivationType::SINE),
+    //(48, 32, false, TestActivationType::RELU),
+    //(48, 32, false, TestActivationType::IDENTITY),
+    //(16, 48, false, TestActivationType::SINE),
+    //(16, 48, false, TestActivationType::RELU),
+    //(16, 48, false, TestActivationType::IDENTITY),
+    //(32, 16, false, TestActivationType::SINE),
+    //(32, 16, false, TestActivationType::RELU),
+    //(32, 16, false, TestActivationType::IDENTITY),
     (32, 48, false, TestActivationType::SINE),
     (32, 48, false, TestActivationType::RELU),
     (32, 48, false, TestActivationType::IDENTITY)//,
@@ -94,7 +97,8 @@ TEMPLATE_TEST_CASE_SIG("test-against-eigen-1", "[eigen]",
     CUstream stream = nullptr;
 
     //create network
-    QuickMLP::Instance().setDebugMode(false);
+    QuickMLP::Instance().setCompileDebugMode(false);
+    QuickMLP::Instance().setVerboseLogging(false);
     auto network = std::make_shared<qmlp::FusedNetwork>(cfg, configFolder);
     SECTION("parallel")
     {

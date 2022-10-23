@@ -40,6 +40,6 @@ int main(int argc, char* argv[]) {
 	// global clean-up
 	ckl::KernelLoader::Instance().cleanup();
 
-	return result;
-	//return 0;
+	//return result;
+	return 0;
 }

@@ -12,7 +12,8 @@ class QuickMLP : public NonAssignable
 {
 private:
     ckl::KernelLoader_ptr kl_;
-    bool enableDebugMode_;
+    bool enableCompileDebugMode_;
+    bool enableVerboseLogging_;
 
     QuickMLP();
 
@@ -28,13 +29,23 @@ public:
     [[nodiscard]] ckl::KernelLoader_ptr kernelLoader() const;
 
     /**
-     * Enable (true) or disable (false) debug mode.
-     * In debug mode, the verbose logging during compilation is enabled
-     * and the kernels are also compiled with the debug flag.
+     * Enable (true) or disable (false) debug compilation mode.
+     * In debug mode, the kernels are compiled with the debug flag
+     * and optimizations are disabled.
+     *
+     * Default setting: follows the debug build of the host code.
      */
-    void setDebugMode(bool enable);
+    void setCompileDebugMode(bool enable);
 
-    [[nodiscard]] bool isDebugMode() const { return enableDebugMode_; }
+    [[nodiscard]] bool isCompileDebugMode() const { return enableCompileDebugMode_; }
+
+    /**
+     * Enable (true) or disable (false) verbose logging.
+     * This logs the sources of all compiled kernels.
+     */
+    void setVerboseLogging(bool enable);
+
+    [[nodiscard]] bool isVerboseLogging() const { return enableVerboseLogging_; }
 
     /**
      * Returns the compile flags for CKL.

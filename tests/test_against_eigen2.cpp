@@ -76,12 +76,14 @@ TEMPLATE_TEST_CASE_SIG("test-against-eigen-2", "[eigen]",
     CUstream stream = nullptr;
 
     //create network
-    QuickMLP::Instance().setDebugMode(false);
+    QuickMLP::Instance().setCompileDebugMode(false);
+    QuickMLP::Instance().setVerboseLogging(true);
+
     auto network = std::make_shared<qmlp::FusedNetwork>(cfg, configFolder);
-    SECTION("parallel")
-    {
-        network->setParallelStreams(true);
-    }
+    //SECTION("parallel")
+    //{
+    //    network->setParallelStreams(true);
+    //}
     SECTION("serial")
     {
         network->setParallelStreams(false);
@@ -112,7 +114,6 @@ TEMPLATE_TEST_CASE_SIG("test-against-eigen-2", "[eigen]",
     //run cuda network
     network->inference(inputDevice, outputDevice, stream);
     CKL_SAFE_CALL(cudaDeviceSynchronize());
-    EigenMatrixX outputCudaHost = toEigenMatrix(outputDevice);
     //run Eigen network
     EigenMatrixX outputEigenHost;
     {
@@ -132,16 +133,16 @@ TEMPLATE_TEST_CASE_SIG("test-against-eigen-2", "[eigen]",
         outputEigenHost = out1.transpose();
     }
     //compare
-    {
-        INFO("output CUDA:\n" << outputCudaHost);
-        INFO("output Eigen:\n" << outputEigenHost);
-        compareEigen(outputCudaHost, outputEigenHost);
-    }
+    //COMPARE_TENSOR_AND_MATRIX(outputDevice, outputEigenHost);
 
     //DERIVATIVES
 
     //adjoint output
     EigenMatrixX adjOutputHost = EigenMatrixX::Random(N, network->channelsOut());
+    adjOutputHost.setZero();
+    //adjOutputHost(30, 15) = 1.0f;
+    adjOutputHost(2, 14) = 2.0f;
+
     qmlp::Tensor adjOutputDevice(network->precisionOut(), { N, network->channelsOut() });
     toGpuTensor(adjOutputDevice, adjOutputHost);
 
@@ -168,11 +169,11 @@ TEMPLATE_TEST_CASE_SIG("test-against-eigen-2", "[eigen]",
 
         EigenMatrixX adjOutTemp1 = TestActivation<Activ2>::adjoint(outTemp1, adjOut1);
         adjBias1Eigen = adjOutTemp1.rowwise().sum();
-        adjWeights1Eigen = adjOutTemp1 * out0.transpose();
+        adjWeights1Eigen = (adjOutTemp1 * out0.transpose());
         EigenMatrixX adjOut0 = weights1.transpose() * adjOutTemp1;
 
-        //std::cout << "adjOutTemp1 =\n" << adjOutTemp1.format(SmallFmt) << "\n";
-        //std::cout << "out0^T = \n" << out0.transpose().eval().format(SmallFmt) << "\n";
+        std::cout << "adjOutTemp1^T =\n" << adjOutTemp1.transpose().eval().format(SmallFmt) << "\n";
+        std::cout << "out0 = \n" << out0.format(SmallFmt) << "\n";
         //std::cout << "adjOutTemp1 = " << adjOutTemp1.block(0, 0, adjOutTemp1.rows(), 1).transpose() << "\n";
         //std::cout << "adjOut0 = " << adjOut0.block(0, 0, adjOut0.rows(), 1).transpose() << "\n";
 
@@ -207,6 +208,11 @@ TEMPLATE_TEST_CASE_SIG("test-against-eigen-2", "[eigen]",
     {
         int tmpSize = adjointWithFlags(qmlp::FusedNetwork::GRADIENTS_NETWORK_WEIGHTS);
         INFO("size of temporary memory: " << tmpSize);
+
+        std::cout << "adjWeights1-Eigen = \n" << adjWeights1Eigen.format(SmallFmt) << "\n";
+        EigenMatrixX adjWeights1Host = toEigenMatrix(network->networkParameter(1, false, Tensor::GRADIENTS));
+        std::cout << "adjWeights1-CUDA = \n" << adjWeights1Host.format(SmallFmt) << "\n";
+
         COMPARE_TENSOR_AND_MATRIX(
             network->networkParameter(0, false, Tensor::GRADIENTS),
             adjWeights0Eigen);

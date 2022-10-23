@@ -5,10 +5,11 @@ QUICKMLP_NAMESPACE_BEGIN
 QuickMLP::QuickMLP()
     : kl_(std::make_shared<ckl::KernelLoader>())
 #ifdef NDEBUG
-    , enableDebugMode_(false)
+    , enableCompileDebugMode_(false)
 #else
-    , enableDebugMode_(true)
+    , enableCompileDebugMode_(true)
 #endif
+    , enableVerboseLogging_(false)
 {
     kl_->setCacheDir(ckl::KernelLoader::DEFAULT_CACHE_DIR);
     //TODO: for now, use the file system
@@ -29,18 +30,26 @@ ckl::KernelLoader_ptr QuickMLP::kernelLoader() const
     return kl_;
 }
 
-void QuickMLP::setDebugMode(bool enable)
+void QuickMLP::setCompileDebugMode(bool enable)
 {
-    enableDebugMode_ = enable;
+    enableCompileDebugMode_ = enable;
+}
+
+void QuickMLP::setVerboseLogging(bool enable)
+{
+    enableVerboseLogging_ = enable;
 }
 
 int QuickMLP::getCompileFlags() const
 {
     int compileFlags = ckl::KernelLoader::CompilationFlags::CompileThrowOnError;
-    if (enableDebugMode_)
+    if (enableCompileDebugMode_)
     {
-        compileFlags |= ckl::KernelLoader::CompilationFlags::CompileDebugMode
-            | ckl::KernelLoader::CompilationFlags::CompileVerboseLogging;
+        compileFlags |= ckl::KernelLoader::CompilationFlags::CompileDebugMode;
+    }
+    if (enableVerboseLogging_)
+    {
+        compileFlags |= ckl::KernelLoader::CompilationFlags::CompileVerboseLogging;
     }
     return compileFlags;
 }

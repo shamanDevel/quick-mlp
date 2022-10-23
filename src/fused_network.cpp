@@ -984,7 +984,7 @@ void FusedNetwork::adjoint(const Tensor& input, const Tensor& adjOutput, Adjoint
     int minGridSize = std::min(
         CKL_DIV_UP(numel, ak.adjoint.blockSize),
         ak.adjoint.fun.minGridSize());
-    std::cout << "Launch with a block size of " << ak.adjoint.blockSize << " and a shared memory size of " <<
+    std::cout << "Launch " << ak.adjoint.fun.name() << " with a block size of " << ak.adjoint.blockSize << " and a shared memory size of " <<
         ak.adjoint.sharedMemorySize << std::endl;
     //launch
     auto inputAcc = input.accessor<kernel::Tensor2Read<float>>();
@@ -1002,7 +1002,7 @@ void FusedNetwork::adjoint(const Tensor& input, const Tensor& adjOutput, Adjoint
     }
 
     //TEST
-    //CKL_SAFE_CALL(cudaDeviceSynchronize()); //TODO: Remove
+    CKL_SAFE_CALL(cudaDeviceSynchronize()); //TODO: Remove
 
     //LAUNCH KERNELS FOR WEIGHT+BIAS UPDATE
     if (hasNetworkGradients)
@@ -1045,7 +1045,7 @@ void FusedNetwork::adjoint(const Tensor& input, const Tensor& adjOutput, Adjoint
 
             int gridSize = 1; //one block only!
             std::cout << "Launch layer " << layer << " with a block size of " << ck.blockSize << " and a shared memory size of " <<
-                ck.sharedMemorySize << std::endl;
+                ck.sharedMemorySize << " (" << ck.fun.name() << ")" << std::endl;
             if (ali.offsetIn>=0)
             {
                 const half* bIn = static_cast<const half*>(tmpMemoryForward) + static_cast<ptrdiff_t>(ali.offsetIn * numel32);
@@ -1092,7 +1092,7 @@ void FusedNetwork::adjoint(const Tensor& input, const Tensor& adjOutput, Adjoint
             }
 
             //TEST
-            //CKL_SAFE_CALL(cudaDeviceSynchronize());
+            CKL_SAFE_CALL(cudaDeviceSynchronize()); //TODO: Remove
         }
     }
 }

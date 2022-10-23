@@ -80,7 +80,7 @@ __global__ void NetworkKernelBackward(
         //call layers
         //e.g. qmlp::kernel::Layer<InChannelsDiv16, OutChannelsDiv16, MAX_CHANNELS, Bias, Activation>
         //          ::template adjoint<ComputeWeightGradients>(
-        //              networkParameters+offsetWeights, networkParameters+offsetBias, intermediateResultsWarp,
+        //              networkParameters+offsetWeights, networkParameters+offsetBias, adjIntermediateResultsWarp,
         //              forwardTmpMemory+offsetIntermediate, adjointTmpMemory+offsetIntermediate);
         //TODO: prefetch weights in shared memory?
 
