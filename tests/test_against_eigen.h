@@ -22,11 +22,11 @@ namespace tests{
 
     enum class TestActivationType
     {
-        RELU, SINE, IDENTITY
+        RELU, CELU, SINE, IDENTITY
     };
     //name for the config file
     static const char* TestActivationConfigName[] = {
-        "relu", "sine", "identity"
+        "relu", "celu", "sine", "identity"
     };
     template<TestActivationType T> struct TestActivation;
     template<>
@@ -42,6 +42,23 @@ namespace tests{
             return (x.array() > EigenScalar_t(0.f)).select(
                 adjz.array(),
                 EigenMatrixX::Zero(adjz.rows(), adjz.cols()).array()).matrix();
+        }
+    };
+    template<>
+    struct TestActivation<TestActivationType::CELU>
+    {
+        static constexpr const float alpha = 1.0f;
+        static EigenMatrixX forward(const EigenMatrixX& x)
+        {
+            return x.array().max(EigenScalar_t(0.0f)) + 
+                (alpha * (x/alpha).array().exp() - 1).min(EigenScalar_t(0.0f));
+        }
+        static EigenMatrixX adjoint(const EigenMatrixX& x, const EigenMatrixX& adjz)
+        {
+            assert(alpha == 1); //simplifies the derivative
+            return (x.array() > EigenScalar_t(0.f)).select(
+                adjz.array(),
+                adjz.array() * x.array().exp()).matrix();
         }
     };
     template<>
@@ -155,7 +172,7 @@ namespace tests{
         REQUIRE(actual.cols() == expected.cols());
         static const float REL_ERROR = 0.05f; //5%
         static const float ABS_ERROR = 1e-3f;
-        static const float ALLOWED_EXCEED = 0; //0.07f; //7%
+        static const float ALLOWED_EXCEED = 0.07f; //7%
         int numExceed = 0;
         for (int i = 0; i < actual.rows(); ++i) for (int j = 0; j < actual.cols(); ++j)
         {

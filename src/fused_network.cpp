@@ -29,6 +29,7 @@ FusedNetwork::FusedNetwork(const nlohmann::json& cfg, const std::filesystem::pat
     , networkInputPadding_(0)
     , numParameters_(0)
     , perEntryForwardMemoryBytes_(0)
+    , adjointEvent_(nullptr)
 {
     //kernel loader
     auto loader = QuickMLP::Instance().kernelLoader();
@@ -432,8 +433,10 @@ void FusedNetwork::compileInferenceKernel()
     {
         blockSize = MAX_SHARED_MEMORY_BYTES / (maxChannels * sizeof(half));
         blockSize = (blockSize / 32) * 32; //round up to multiple of the warp size
-        std::cout << "It would be possible to fit more threads into each block in terms of register usage, but the shared memory is not enough. " <<
-            "Reducing the block size from " << bestBlockSize << " down to " << blockSize << std::endl;
+        if (QuickMLP::Instance().isVerboseLogging()) {
+            std::cout << "It would be possible to fit more threads into each block in terms of register usage, but the shared memory is not enough. " <<
+                "Reducing the block size from " << bestBlockSize << " down to " << blockSize << std::endl;
+        }
         sharedMemorySize = blockSize * maxChannels * sizeof(half);
     }
 
@@ -487,8 +490,10 @@ void FusedNetwork::inference(const Tensor& input, Tensor& output, CUstream strea
     int minGridSize = std::min(
         CKL_DIV_UP(numel, inferenceKernel_->blockSize), 
         inferenceKernel_->fun.minGridSize());
-    std::cout << "Launch with a block size of " << inferenceKernel_->blockSize << " and a shared memory size of " <<
-        inferenceKernel_->sharedMemorySize << std::endl;
+    if (QuickMLP::Instance().isVerboseLogging()) {
+        std::cout << "Launch with a block size of " << inferenceKernel_->blockSize << " and a shared memory size of " <<
+            inferenceKernel_->sharedMemorySize << std::endl;
+    }
     //launch
     auto inputAcc = input.accessor<kernel::Tensor2Read<float>>();
     auto outputAcc = output.accessor<kernel::Tensor2RW<float>>();
@@ -587,8 +592,10 @@ void FusedNetwork::compileForwardKernel()
     {
         blockSize = MAX_SHARED_MEMORY_BYTES / (maxChannels * sizeof(half));
         blockSize = (blockSize / 32) * 32; //round up to multiple of the warp size
-        std::cout << "It would be possible to fit more threads into each block in terms of register usage, but the shared memory is not enough. " <<
-            "Reducing the block size from " << bestBlockSize << " down to " << blockSize << std::endl;
+        if (QuickMLP::Instance().isVerboseLogging()) {
+            std::cout << "It would be possible to fit more threads into each block in terms of register usage, but the shared memory is not enough. " <<
+                "Reducing the block size from " << bestBlockSize << " down to " << blockSize << std::endl;
+        }
         sharedMemorySize = blockSize * maxChannels * sizeof(half);
     }
 
@@ -660,8 +667,10 @@ void FusedNetwork::forward(const Tensor& input, Tensor& output, void* tmpMemory,
     int minGridSize = std::min(
         CKL_DIV_UP(numel, forwardKernel_->blockSize),
         forwardKernel_->fun.minGridSize());
-    std::cout << "Launch with a block size of " << forwardKernel_->blockSize << " and a shared memory size of " <<
-        forwardKernel_->sharedMemorySize << std::endl;
+    if (QuickMLP::Instance().isVerboseLogging()) {
+        std::cout << "Launch with a block size of " << forwardKernel_->blockSize << " and a shared memory size of " <<
+            forwardKernel_->sharedMemorySize << std::endl;
+    }
     //launch
     auto inputAcc = input.accessor<kernel::Tensor2Read<float>>();
     auto outputAcc = output.accessor<kernel::Tensor2RW<float>>();
@@ -779,8 +788,10 @@ void FusedNetwork::compileBackwardKernel(int flags)
     {
         blockSize = MAX_SHARED_MEMORY_BYTES / (maxChannels * sizeof(half));
         blockSize = (blockSize / 32) * 32; //round down to multiple of the warp size
-        std::cout << "It would be possible to fit more threads into each block in terms of register usage, but the shared memory is not enough. " <<
-            "Reducing the block size from " << bestBlockSize << " down to " << blockSize << std::endl;
+        if (QuickMLP::Instance().isVerboseLogging()) {
+            std::cout << "It would be possible to fit more threads into each block in terms of register usage, but the shared memory is not enough. " <<
+                "Reducing the block size from " << bestBlockSize << " down to " << blockSize << std::endl;
+        }
         sharedMemorySize = blockSize * maxChannels * sizeof(half);
     }
 
@@ -895,8 +906,10 @@ void FusedNetwork::compileBackwardKernel(int flags)
                 {
                     throw configuration_error("Layer %d too large for block-wise weight update!", layer);
                 }
-                std::cout << "It would be possible to fit more threads into each block in terms of register usage, but the shared memory is not enough. " <<
-                    "Reducing the block size from " << bestBlockSize << " down to " << blockSize << std::endl;
+                if (QuickMLP::Instance().isVerboseLogging()) {
+                    std::cout << "It would be possible to fit more threads into each block in terms of register usage, but the shared memory is not enough. " <<
+                        "Reducing the block size from " << bestBlockSize << " down to " << blockSize << std::endl;
+                }
                 sharedMemorySize = numWarps * sharedMemoryBytesPerWarp;
             }
 
@@ -984,8 +997,10 @@ void FusedNetwork::adjoint(const Tensor& input, const Tensor& adjOutput, Adjoint
     int minGridSize = std::min(
         CKL_DIV_UP(numel, ak.adjoint.blockSize),
         ak.adjoint.fun.minGridSize());
-    std::cout << "Launch " << ak.adjoint.fun.name() << " with a block size of " << ak.adjoint.blockSize << " and a shared memory size of " <<
-        ak.adjoint.sharedMemorySize << std::endl;
+    if (QuickMLP::Instance().isVerboseLogging()) {
+        std::cout << "Launch " << ak.adjoint.fun.name() << " with a block size of " << ak.adjoint.blockSize << " and a shared memory size of " <<
+            ak.adjoint.sharedMemorySize << std::endl;
+    }
     //launch
     auto inputAcc = input.accessor<kernel::Tensor2Read<float>>();
     auto adjOutputAcc = adjOutput.accessor<kernel::Tensor2Read<float>>();
@@ -1043,9 +1058,11 @@ void FusedNetwork::adjoint(const Tensor& input, const Tensor& adjOutput, Adjoint
                 layerStream = stream;
             }
 
-            int gridSize = 1; //one block only!
-            std::cout << "Launch layer " << layer << " with a block size of " << ck.blockSize << " and a shared memory size of " <<
-                ck.sharedMemorySize << " (" << ck.fun.name() << ")" << std::endl;
+            int gridSize = 1; //one block only (non-atomic reduction)!
+            if (QuickMLP::Instance().isVerboseLogging()) {
+                std::cout << "Launch layer " << layer << " with a block size of " << ck.blockSize << " and a shared memory size of " <<
+                    ck.sharedMemorySize << " (" << ck.fun.name() << ")" << std::endl;
+            }
             if (ali.offsetIn>=0)
             {
                 const half* bIn = static_cast<const half*>(tmpMemoryForward) + static_cast<ptrdiff_t>(ali.offsetIn * numel32);
@@ -1055,34 +1072,6 @@ void FusedNetwork::adjoint(const Tensor& input, const Tensor& adjOutput, Adjoint
             else
             {
                 auto bIn = inputAcc;
-
-#if 0
-                //TEST
-                std::cout << "bIn, shape=" << bIn.size(0) << " x " << bIn.size(1) << std::endl;
-                std::vector<float> dataF(input.numel());
-                cudaMemcpy(dataF.data(), input.rawPtr(), sizeof(float) * input.numel(), cudaMemcpyDeviceToHost);
-                printf("     ");
-                for (int j = 0; j < bIn.size(1); ++j) { printf("  %03d  ", j); } printf("\n");
-                for (int i=0; i<bIn.size(0); ++i)
-                {
-                    printf("%03d  ", i);
-                    for (int j = 0; j < bIn.size(1); ++j) { printf(" %+.2f ", dataF[input.idx({i,j})]); }
-                    printf("\n");
-                }
-
-                auto aInTensor = Tensor(aIn, Tensor::HALF, { ls.channelsOut, numel }, { 1, ls.channelsOut });
-                std::cout << "aIn, shape=" << aInTensor.size(0) << " x " << aInTensor.size(1) << std::endl;
-                std::vector<half> dataH(aInTensor.numel());
-                cudaMemcpy(dataH.data(), aInTensor.rawPtr(), sizeof(half)*aInTensor.numel(), cudaMemcpyDeviceToHost);
-                printf("     ");
-                for (int j = 0; j < aInTensor.size(1); ++j) { printf("  %03d  ", j); } printf("\n");
-                for (int i = 0; i < aInTensor.size(0); ++i)
-                {
-                    printf("%03d  ", i);
-                    for (int j = 0; j < aInTensor.size(1); ++j) { printf(" %+.2f ", __half2float(dataH[aInTensor.idx({ i,j })])); }
-                    printf("\n");
-                }
-#endif
                 ck.fun.call(gridSize, ck.blockSize, ck.sharedMemorySize, layerStream,
                     numel, outAdjWeights, aIn, bIn);
             }

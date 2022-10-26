@@ -5,6 +5,11 @@
         "adjoint": "adjx = __hgt(x, hZERO()) ? adjz : hZERO()"
     },
     {
+        "id": "celu",
+        "forward": "z = __hgt(x, hZERO()) ? x : __hsub(hexp(x), __float2half(1.0f))",
+        "adjoint": "adjx = __hgt(x, hZERO()) ? adjz : __hmul(adjz, hexp(x))"
+    },
+    {
         "id": "sine",
         "forward": "z = hsin(x)",
         "adjoint": "adjx = __hmul(hcos(x), adjz)"

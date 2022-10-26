@@ -173,9 +173,24 @@ struct HiddenLoader
      */
     __device__ static void loadToFragment(fragment_t dst[2][NDiv16], const half* tmpShared)
     {
+        /*
+         * tmpShared:
+         *  - channel from 0 to N-1
+         *  - batch from 0 to 31
+         * matrix in shared memory: channel rows, batch columns, column major
+         *    element(channel, batch) = tmpShared[channel + N*batch]
+         * We need it transposed as a matrix of shape (batch, channels) =: I'
+         *    -> load it row-major
+         *    fragment[0, cin] spans I'[0:16, 16*cin:16*(cin+1)]
+         *       = tmpShared with offset 16*cin and stride N
+         *    fragment[1, cin] spans I'[16:32, 16*cin:16*(cin+1)]
+         *       = tmpShared with offset 16*cin+16*N and stride N
+         */
+
 #if DEBUG_PRINT==1
         //TEST
-        printLayer(1, threadIdx.x, tmpShared + (N*(threadIdx.x%32)), N);
+        const int lineID = threadIdx.x % 32;
+        printLayer(11, threadIdx.x, tmpShared + (N*lineID), N);
 #endif
 
         //note: load as row-major for transposing!
@@ -187,15 +202,15 @@ struct HiddenLoader
             assert(isAligned<8>(tmpShared + 16 * cin + 16 * N));
 
             using namespace nvcuda::wmma;
-            load_matrix_sync(dst[0][cin], tmpShared + 16 * cin, N); //TODO: are the strides correct?
-            load_matrix_sync(dst[1][cin], tmpShared + 16 * cin + 16 * N, N); //compare to how the Layer stores the intermediate results
+            load_matrix_sync(dst[0][cin], tmpShared + 16 * cin, N);
+            load_matrix_sync(dst[1][cin], tmpShared + 16 * cin + 16 * N, N);
         }
         //run the activations again
         for (int j = 0; j < 2; ++j) {
             for (int i = 0; i < NDiv16; ++i) {
                 for (int t = 0; t < dst[0][0].num_elements; t++)
                 {
-                    dst[j][i].x[t] = Activation::forward(dst[i][j].x[t]);
+                    dst[j][i].x[t] = Activation::forward(dst[j][i].x[t]);
                 }
             }
         }
@@ -394,7 +409,9 @@ __global__ void WeightUpdateSingleBlockKernel(
 
     //now loop over the partitions of K of size 32
     const auto warps_pow32 = divRoundUp(numel, 32);
+#if DEBUG_PRINT==1
     if (threadIdx.x == 0) printf("active warps=%d, numWarps=%d\n", warps_pow32, numWarps);
+#endif
     for (int warpIndex = warpID; 
         warpIndex < warps_pow32;
         warpIndex += numWarps)

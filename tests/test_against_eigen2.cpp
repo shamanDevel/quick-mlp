@@ -16,30 +16,28 @@ using namespace qmlp::tests;
 TEMPLATE_TEST_CASE_SIG("test-against-eigen-2", "[eigen]", 
     ((int Channels0, int Channels1, bool Bias1, TestActivationType Activ1, int Channels2, bool Bias2, TestActivationType Activ2),
         Channels0, Channels1, Bias1, Activ1, Channels2, Bias2, Activ2),
-    (16, 32, false, TestActivationType::IDENTITY, 16, false, TestActivationType::IDENTITY)
-    /**
-     * 2nd layer adjoint weights incorrect if inputChannels>16
-     */
 
-    //(16, 16, false, TestActivationType::SINE, 16, false, TestActivationType::IDENTITY),
-    //(16, 16, false, TestActivationType::SINE, 16, false, TestActivationType::SINE),
-    //(16, 16, false, TestActivationType::RELU, 16, false, TestActivationType::IDENTITY),
-    //(16, 16, false, TestActivationType::SINE, 32, false, TestActivationType::SINE),
-    //(16, 16, false, TestActivationType::RELU, 32, false, TestActivationType::IDENTITY),
-    //(32, 48, false, TestActivationType::SINE, 16, false, TestActivationType::SINE),
-    //(32, 48, false, TestActivationType::RELU, 16, false, TestActivationType::IDENTITY),
-    //(32, 48, false, TestActivationType::SINE, 32, false, TestActivationType::SINE),
-    //(32, 48, false, TestActivationType::RELU, 32, false, TestActivationType::IDENTITY)//,
-    //
-    //(16, 16, true, TestActivationType::SINE, 16, true, TestActivationType::IDENTITY),
-    //(16, 16, true, TestActivationType::SINE, 16, true, TestActivationType::SINE),
-    //(16, 16, true, TestActivationType::RELU, 16, true, TestActivationType::IDENTITY),
-    //(16, 16, true, TestActivationType::SINE, 32, true, TestActivationType::SINE),
-    //(16, 16, true, TestActivationType::RELU, 32, true, TestActivationType::IDENTITY),
-    //(32, 48, true, TestActivationType::SINE, 16, true, TestActivationType::SINE),
-    //(32, 48, true, TestActivationType::RELU, 16, true, TestActivationType::IDENTITY),
-    //(32, 48, true, TestActivationType::SINE, 32, true, TestActivationType::SINE),
-    //(32, 48, true, TestActivationType::RELU, 32, true, TestActivationType::IDENTITY)
+    (16, 16, false, TestActivationType::IDENTITY, 16, false, TestActivationType::IDENTITY),
+    (16, 16, false, TestActivationType::SINE,     16, false, TestActivationType::IDENTITY),
+    (16, 16, false, TestActivationType::SINE,     16, false, TestActivationType::SINE),
+    (16, 16, false, TestActivationType::CELU,     16, false, TestActivationType::CELU),
+
+    (16, 16, false, TestActivationType::IDENTITY, 32, false, TestActivationType::IDENTITY),
+    (16, 16, false, TestActivationType::SINE,     32, false, TestActivationType::IDENTITY),
+    (16, 16, false, TestActivationType::SINE,     32, false, TestActivationType::SINE),
+    (16, 16, false, TestActivationType::CELU,     32, false, TestActivationType::CELU),
+
+    (32, 48, false, TestActivationType::IDENTITY, 16, false, TestActivationType::IDENTITY),
+    (32, 48, false, TestActivationType::SINE, 16, false, TestActivationType::IDENTITY),
+    (32, 48, false, TestActivationType::SINE, 16, false, TestActivationType::SINE),
+    (32, 48, false, TestActivationType::CELU, 16, false, TestActivationType::CELU),
+
+    (32, 48, false, TestActivationType::IDENTITY, 32, false, TestActivationType::IDENTITY),
+    (32, 48, false, TestActivationType::SINE, 32, false, TestActivationType::IDENTITY),
+    (32, 48, false, TestActivationType::SINE, 32, false, TestActivationType::SINE),
+    (32, 48, false, TestActivationType::CELU, 32, false, TestActivationType::CELU)//,
+
+    //TODO: Bias
     )
 {
     nlohmann::json cfg = {
@@ -77,18 +75,18 @@ TEMPLATE_TEST_CASE_SIG("test-against-eigen-2", "[eigen]",
 
     //create network
     QuickMLP::Instance().setCompileDebugMode(false);
-    QuickMLP::Instance().setVerboseLogging(true);
+    QuickMLP::Instance().setVerboseLogging(false);
 
     auto network = std::make_shared<qmlp::FusedNetwork>(cfg, configFolder);
-    //SECTION("parallel")
-    //{
-    //    network->setParallelStreams(true);
-    //}
+    SECTION("parallel")
+    {
+        network->setParallelStreams(true);
+    }
     SECTION("serial")
     {
         network->setParallelStreams(false);
     }
-    WARN("network parameters: " << network->networkParameterCount());
+    INFO("network parameters: " << network->networkParameterCount());
     INFO("network parallel streams: " << network->isParallelStreams());
 
     //create parameter tensor
@@ -133,15 +131,15 @@ TEMPLATE_TEST_CASE_SIG("test-against-eigen-2", "[eigen]",
         outputEigenHost = out1.transpose();
     }
     //compare
-    //COMPARE_TENSOR_AND_MATRIX(outputDevice, outputEigenHost);
+    COMPARE_TENSOR_AND_MATRIX(outputDevice, outputEigenHost);
 
     //DERIVATIVES
 
     //adjoint output
     EigenMatrixX adjOutputHost = EigenMatrixX::Random(N, network->channelsOut());
     adjOutputHost.setZero();
-    //adjOutputHost(30, 15) = 1.0f;
-    adjOutputHost(2, 14) = 2.0f;
+    //adjOutputHost(30, 15) = 1.0f; //this succeeds
+    adjOutputHost(2, 14) = 2.0f; //this fails
 
     qmlp::Tensor adjOutputDevice(network->precisionOut(), { N, network->channelsOut() });
     toGpuTensor(adjOutputDevice, adjOutputHost);
@@ -172,8 +170,8 @@ TEMPLATE_TEST_CASE_SIG("test-against-eigen-2", "[eigen]",
         adjWeights1Eigen = (adjOutTemp1 * out0.transpose());
         EigenMatrixX adjOut0 = weights1.transpose() * adjOutTemp1;
 
-        std::cout << "adjOutTemp1^T =\n" << adjOutTemp1.transpose().eval().format(SmallFmt) << "\n";
-        std::cout << "out0 = \n" << out0.format(SmallFmt) << "\n";
+        //std::cout << "adjOutTemp1^T =\n" << adjOutTemp1.transpose().eval().format(SmallFmt) << "\n";
+        //std::cout << "out0 = \n" << out0.format(SmallFmt) << "\n";
         //std::cout << "adjOutTemp1 = " << adjOutTemp1.block(0, 0, adjOutTemp1.rows(), 1).transpose() << "\n";
         //std::cout << "adjOut0 = " << adjOut0.block(0, 0, adjOut0.rows(), 1).transpose() << "\n";
 
@@ -182,8 +180,8 @@ TEMPLATE_TEST_CASE_SIG("test-against-eigen-2", "[eigen]",
         adjWeights0Eigen = adjOutTemp0 * input.transpose();
         EigenMatrixX adjInput = weights0.transpose() * adjOutTemp0;
 
-        //std::cout << "adjOutTemp0 =\n" << adjOutTemp0.format(SmallFmt) << "\n";
-        //std::cout << "input^T = \n" << input.transpose().eval().format(SmallFmt) << "\n";
+        //std::cout << "adjOutTemp0^T =\n" << adjOutTemp0.transpose().eval().format(SmallFmt) << "\n";
+        //std::cout << "input = \n" << input.format(SmallFmt) << "\n";
         //std::cout << "adjOutTemp0 = " << adjOutTemp0.block(0, 0, adjOutTemp0.rows(), 1).transpose() << "\n";
         //std::cout << "adjInput = " << adjInput.block(0, 0, adjInput.rows(), 1).transpose() << "\n";
 
@@ -206,12 +204,46 @@ TEMPLATE_TEST_CASE_SIG("test-against-eigen-2", "[eigen]",
 
     //only weight derivatives
     {
-        int tmpSize = adjointWithFlags(qmlp::FusedNetwork::GRADIENTS_NETWORK_WEIGHTS);
+        int tmpSize = adjointWithFlags(
+            qmlp::FusedNetwork::GRADIENTS_NETWORK_WEIGHTS);
         INFO("size of temporary memory: " << tmpSize);
 
-        std::cout << "adjWeights1-Eigen = \n" << adjWeights1Eigen.format(SmallFmt) << "\n";
-        EigenMatrixX adjWeights1Host = toEigenMatrix(network->networkParameter(1, false, Tensor::GRADIENTS));
-        std::cout << "adjWeights1-CUDA = \n" << adjWeights1Host.format(SmallFmt) << "\n";
+        COMPARE_TENSOR_AND_MATRIX(
+            network->networkParameter(0, false, Tensor::GRADIENTS),
+            adjWeights0Eigen);
+        COMPARE_TENSOR_AND_MATRIX(
+            network->networkParameter(1, false, Tensor::GRADIENTS),
+            adjWeights1Eigen);
+        if constexpr (Bias1)
+        {
+            COMPARE_TENSOR_AND_VECTOR(
+                network->networkParameter(0, true, Tensor::GRADIENTS),
+                adjBias0Eigen);
+        }
+        if constexpr (Bias2)
+        {
+            COMPARE_TENSOR_AND_VECTOR(
+                network->networkParameter(1, true, Tensor::GRADIENTS),
+                adjBias1Eigen);
+        }
+    }
+
+    //all derivatives
+    {
+        int tmpSize = adjointWithFlags(
+            qmlp::FusedNetwork::GRADIENTS_NETWORK_WEIGHTS |
+            qmlp::FusedNetwork::GRADIENTS_INPUT);
+        INFO("size of temporary memory: " << tmpSize);
+
+        COMPARE_TENSOR_AND_MATRIX(adjInputDevice, adjInputEigen);
+
+        //std::cout << "adjWeights1-Eigen = \n" << adjWeights1Eigen.format(SmallFmt) << "\n";
+        //EigenMatrixX adjWeights1Host = toEigenMatrix(network->networkParameter(1, false, Tensor::GRADIENTS));
+        //std::cout << "adjWeights1-CUDA = \n" << adjWeights1Host.format(SmallFmt) << "\n";
+
+        //std::cout << "adjWeights0-Eigen = \n" << adjWeights0Eigen.format(SmallFmt) << "\n";
+        //EigenMatrixX adjWeights0Host = toEigenMatrix(network->networkParameter(0, false, Tensor::GRADIENTS));
+        //std::cout << "adjWeights0-CUDA = \n" << adjWeights0Host.format(SmallFmt) << "\n";
 
         COMPARE_TENSOR_AND_MATRIX(
             network->networkParameter(0, false, Tensor::GRADIENTS),
