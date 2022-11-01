@@ -24,6 +24,9 @@ public:
         nlohmann::json j = nlohmann::json::parse(cfg);
         a_ = QUICKMLP_NAMESPACE::EncodingFactory::Instance().create(j);
     }
+    EncodingBindings(QUICKMLP_NAMESPACE::IEncoding_ptr a)
+        : cfg_(), a_(a)
+    {}
 
     [[nodiscard]] std::string cfg() const
     {

@@ -12,13 +12,13 @@
 
 #include "bind_activation.h"
 #include "bind_encoding.h"
+#include "bind_network.h"
 #include "bind_utils.h"
 
 QUICKMLP_NAMESPACE_BEGIN
 QUICKMLP_NAMESPACE::Tensor wrap(const torch::Tensor& t)
 {
-    if (!t.is_cuda())
-        throw std::runtime_error("Tensor must reside on CUDA");
+    TORCH_CHECK(t.is_cuda(), "Tensor must reside on the GPU");
 
     qmlp::Tensor::Precision p;
     if (t.dtype() == c10::kFloat)
@@ -26,7 +26,9 @@ QUICKMLP_NAMESPACE::Tensor wrap(const torch::Tensor& t)
     else if (t.dtype() == c10::kHalf)
         p = qmlp::Tensor::HALF;
     else
-        throw std::runtime_error("Unsupported datatype, only float and half tensors supported");
+    {
+        TORCH_CHECK(false, "Unsupported datatype, only float and half tensors supported");
+    }
 
     std::vector<int32_t> sizes(t.sizes().begin(), t.sizes().end());
     std::vector<int32_t> strides(t.strides().begin(), t.strides().end());
@@ -37,9 +39,21 @@ QUICKMLP_NAMESPACE_END
 
 struct QuickMLPBindings : public torch::CustomClassHolder
 {
-    static void setDebugMode(bool enable)
+    static void setCompileDebugMode(bool enable)
     {
-        qmlp::QuickMLP::Instance().setDebugMode(enable);
+        qmlp::QuickMLP::Instance().setCompileDebugMode(enable);
+    }
+    static bool isCompileDebugMode()
+    {
+        return qmlp::QuickMLP::Instance().isCompileDebugMode();
+    }
+    static void setVerboseLogging(bool enable)
+    {
+        qmlp::QuickMLP::Instance().setVerboseLogging(enable);
+    }
+    static bool isVerboseLogging()
+    {
+        return qmlp::QuickMLP::Instance().isVerboseLogging();
     }
 };
 
@@ -51,11 +65,19 @@ namespace
 TORCH_LIBRARY(qmlp, m)
 {
     m.class_<QuickMLPBindings>("QuickMLP")
-        .def_static("set_debug_mode", &QuickMLPBindings::setDebugMode)
+        .def_static("set_compile_debug_mode", &QuickMLPBindings::setCompileDebugMode,
+            "If set to true, CUDA kernels are compiled in debug mode '-D'")
+        .def_static("is_compile_debug_mode", &QuickMLPBindings::isCompileDebugMode,
+            "Returns if debug compilation enabled for CUDA kernels or not")
+        .def_static("set_verbose_logging", &QuickMLPBindings::setVerboseLogging,
+            "If set to true, verbose logging messages are enabled")
+        .def_static("is_verbose_logging", &QuickMLPBindings::isVerboseLogging,
+            "Returns if debug logging is enabled")
     ;
 
     bindActivation(m);
     bindEncoding(m);
+    bindNetwork(m);
     bindUtils(m);
 
     std::cout << "QuickMLP bindings loaded" << std::endl;

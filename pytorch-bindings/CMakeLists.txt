@@ -62,9 +62,13 @@ set(BINDINGS_FILES
     src/bind_activation.cpp
     src/bind_encoding.h
     src/bind_encoding.cpp
+    src/bind_network.h
+    src/bind_network.cpp
     src/bind_utils.h
     src/bind_utils.cpp
     src/bindings.cpp
+    src/tensorlist_node.h
+    src/tensorlist_node.cpp
     )
 
 # create the python extension
