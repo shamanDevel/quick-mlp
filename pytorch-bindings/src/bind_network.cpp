@@ -17,6 +17,12 @@ static torch::Tensor createOutputTensor(const torch::Tensor& input, int channels
     return t;
 }
 
+NetworkBindings::NetworkBindings(const std::string& cfg, const std::string& parent): cfg_(cfg), parent_(parent), n_()
+{
+    nlohmann::json j = nlohmann::json::parse(cfg);
+    n_ = std::make_shared<QUICKMLP_NAMESPACE::FusedNetwork>(j, parent);
+}
+
 EncodingBindings_ptr NetworkBindings::encoding(int64_t idx)
 {
     return c10::make_intrusive<EncodingBindings>(n_->encoding(idx));

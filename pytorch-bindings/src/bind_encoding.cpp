@@ -16,6 +16,12 @@ static torch::Tensor createOutputTensor(const torch::Tensor& input, int channels
     return t;
 }
 
+EncodingBindings::EncodingBindings(const std::string& cfg): cfg_(cfg), a_()
+{
+    nlohmann::json j = nlohmann::json::parse(cfg);
+    a_ = QUICKMLP_NAMESPACE::EncodingFactory::Instance().create(j);
+}
+
 std::string EncodingBindings::toJson() const
 {
     return a_->toJson().dump();

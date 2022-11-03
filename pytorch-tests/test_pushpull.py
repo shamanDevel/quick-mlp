@@ -16,7 +16,7 @@ load_library()
 pullpush = torch.classes.qmlp.utils.pullpush
 
 # load test image from the "Painter" dataset
-ground_truth_image = imageio.imread("pushpull_input.jpg")
+ground_truth_image = imageio.imread("input_art1.jpg")
 print(ground_truth_image.shape)
 print(ground_truth_image.dtype)
 #plt.figure()

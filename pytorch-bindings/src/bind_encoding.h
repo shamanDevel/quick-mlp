@@ -18,12 +18,8 @@ class EncodingBindings : public torch::CustomClassHolder
     QUICKMLP_NAMESPACE::IEncoding_ptr a_;
 
 public:
-    EncodingBindings(const std::string& cfg)
-        : cfg_(cfg), a_()
-    {
-        nlohmann::json j = nlohmann::json::parse(cfg);
-        a_ = QUICKMLP_NAMESPACE::EncodingFactory::Instance().create(j);
-    }
+    EncodingBindings(const std::string& cfg);
+
     EncodingBindings(QUICKMLP_NAMESPACE::IEncoding_ptr a)
         : cfg_(), a_(a)
     {}

@@ -22,12 +22,7 @@ class NetworkBindings : public torch::CustomClassHolder
     friend class NetworkAutogradFunction;
 
 public:
-    NetworkBindings(const std::string& cfg, const std::string& parent)
-        : cfg_(cfg), parent_(parent), n_()
-    {
-        nlohmann::json j = nlohmann::json::parse(cfg);
-        n_ = std::make_shared<QUICKMLP_NAMESPACE::FusedNetwork>(cfg, parent);
-    }
+    NetworkBindings(const std::string& cfg, const std::string& parent);
 
     [[nodiscard]] std::string cfg() const
     {
