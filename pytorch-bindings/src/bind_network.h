@@ -28,7 +28,6 @@ public:
         nlohmann::json j = nlohmann::json::parse(cfg);
         n_ = std::make_shared<QUICKMLP_NAMESPACE::FusedNetwork>(cfg, parent);
     }
-    ~NetworkBindings() = default;
 
     [[nodiscard]] std::string cfg() const
     {
@@ -47,7 +46,7 @@ public:
     void setParallelStreams(bool enabled) { n_->setParallelStreams(enabled); }
 
     [[nodiscard]] int64_t numEncodings() const { return n_->numEncodings(); }
-    EncodingBindings_ptr encoding(int idx);
+    EncodingBindings_ptr encoding(int64_t idx);
 
     [[nodiscard]] int64_t channelsIn() const { return n_->channelsIn(); }
     [[nodiscard]] int64_t channelsOut() const { return n_->channelsOut(); }
@@ -76,6 +75,12 @@ public:
                 n_->networkParameterPrecision(qmlp::Tensor::GRADIENTS) == qmlp::Tensor::FLOAT ? c10::kFloat : c10::kHalf
             ).device(c10::kCUDA));
     }
+
+    /**
+     * Returns a view of the inference or the gradient tensor
+     * slicing the weight matrix or bias vector
+     */
+    [[nodiscard]] torch::Tensor view(int64_t layer, bool bias, torch::Tensor parameters);
 
     void initializeInferenceParameters(torch::Tensor dst);
 

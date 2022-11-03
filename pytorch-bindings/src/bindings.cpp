@@ -16,6 +16,7 @@
 #include "bind_utils.h"
 
 QUICKMLP_NAMESPACE_BEGIN
+
 QUICKMLP_NAMESPACE::Tensor wrap(const torch::Tensor& t)
 {
     TORCH_CHECK(t.is_cuda(), "Tensor must reside on the GPU");
@@ -35,6 +36,27 @@ QUICKMLP_NAMESPACE::Tensor wrap(const torch::Tensor& t)
 
     return QUICKMLP_NAMESPACE::Tensor( t.data_ptr(), p, sizes, strides );
 }
+
+torch::Tensor unwrap(QUICKMLP_NAMESPACE::Tensor& t)
+{
+    std::vector<int64_t> sizes(t.sizes().begin(), t.sizes().end());
+    torch::IntArrayRef sizesTorch(sizes);
+
+    std::vector<int64_t> strides(t.strides().begin(), t.strides().end());
+    torch::IntArrayRef stridesTorch(strides);
+
+    c10::ScalarType dtype;
+    if (t.precision() == Tensor::HALF)
+        dtype = c10::kHalf;
+    else if (t.precision() == Tensor::FLOAT)
+        dtype = c10::kFloat;
+    else //double
+        dtype = c10::kDouble;
+
+    return torch::from_blob(t.dataPtr<void>(), sizesTorch, stridesTorch,
+        at::TensorOptions().device(c10::kCUDA).dtype(dtype));
+}
+
 QUICKMLP_NAMESPACE_END
 
 struct QuickMLPBindings : public torch::CustomClassHolder

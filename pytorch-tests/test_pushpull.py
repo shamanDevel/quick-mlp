@@ -8,22 +8,21 @@ from typing import Optional
 import imageio
 import matplotlib.pyplot as plt
 import torch.optim
-import tqdm
 
-torch.classes.load_library(os.path.join(os.path.split(__file__)[0], "../bin/qmlp.so"))
-print(torch.classes.loaded_libraries)
+from import_library import load_library
+load_library()
 
-torch.classes.qmlp.QuickMLP.set_debug_mode(True)
+# fetch pull-push implementation
 pullpush = torch.classes.qmlp.utils.pullpush
 
 # load test image from the "Painter" dataset
 ground_truth_image = imageio.imread("pushpull_input.jpg")
 print(ground_truth_image.shape)
 print(ground_truth_image.dtype)
-plt.figure()
-plt.imshow(ground_truth_image)
-plt.title("Input ground truth")
-plt.show()
+#plt.figure()
+#plt.imshow(ground_truth_image)
+#plt.title("Input ground truth")
+#plt.show()
 
 #prepare output
 os.makedirs("output", exist_ok=True)
@@ -48,12 +47,12 @@ save(mask, "pullpush-mask.png")
 inpainted_image = pullpush(mask, ground_truth_gpu)
 save(inpainted_image, "pullpush-inpainted.png")
 # and show
-fig, axes = plt.subplots(1, 2)
-axes[0].imshow(mask[0].cpu().numpy())
-axes[0].set_title("Mask")
-axes[1].imshow(inpainted_image[0].permute(1,2,0).cpu().numpy())
-axes[1].set_title("Inpainted")
-plt.show()
+#fig, axes = plt.subplots(1, 2)
+#axes[0].imshow(mask[0].cpu().numpy())
+#axes[0].set_title("Mask")
+#axes[1].imshow(inpainted_image[0].permute(1,2,0).cpu().numpy())
+#axes[1].set_title("Inpainted")
+#plt.show()
 
 # train input
 data_in = torch.rand_like(ground_truth_gpu)

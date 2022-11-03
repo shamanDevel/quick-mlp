@@ -17,7 +17,7 @@ static torch::Tensor createOutputTensor(const torch::Tensor& input, int channels
     return t;
 }
 
-EncodingBindings_ptr NetworkBindings::encoding(int idx)
+EncodingBindings_ptr NetworkBindings::encoding(int64_t idx)
 {
     return c10::make_intrusive<EncodingBindings>(n_->encoding(idx));
 }
@@ -96,6 +96,12 @@ torch::Tensor NetworkBindings::forward(
         if (t.defined() && t.requires_grad())
             adjointFlags |= QUICKMLP_NAMESPACE::FusedNetwork::AdjointMode::GRADIENTS_INPUT_ENCODINGS;
     }
+    //short-cut
+    if (adjointFlags == 0)
+    {
+        //no derivatives activate
+        return inference(input, networkParameters, encodingParameters);
+    }
 
     //collect variables
     torch::autograd::variable_list vars(3 + encodingParameters.size());
@@ -131,7 +137,7 @@ torch::Tensor NetworkBindings::forward(
             this->n_->forward(
                 QUICKMLP_NAMESPACE::wrap(input),
                 outputWrapped,
-                tmpForward.data_ptr<char>(),
+                tmpForward.data_ptr(),
                 stream);
 
             ctx->save_for_backward(args);
@@ -196,8 +202,8 @@ torch::Tensor NetworkBindings::forward(
                 QUICKMLP_NAMESPACE::wrap(adjOutput),
                 adjointFlags,
                 adjInputWrapped,
-                forwardTmp.data_ptr<char>(),
-                adjointTmp.data_ptr<char>(),
+                forwardTmp.data_ptr(),
+                adjointTmp.data_ptr(),
                 stream);
 
             torch::autograd::variable_list adjInputs(saved.size());
@@ -211,6 +217,28 @@ torch::Tensor NetworkBindings::forward(
     return ret[0];
 }
 
+torch::Tensor NetworkBindings::view(int64_t layer, bool bias, torch::Tensor parameters)
+{
+    TORCH_CHECK(parameters.dtype() == c10::kFloat || parameters.dtype() == c10::kHalf);
+    TORCH_CHECK(parameters.dim() == 1, "The tensor must be of shape (num_parameters, )");
+    TORCH_CHECK(parameters.size(0) == n_->networkParameterCount());
+
+    QUICKMLP_NAMESPACE::Tensor::Precision p;
+    void* ptr;
+    if (parameters.dtype() == c10::kFloat)
+    {
+        p = qmlp::Tensor::FLOAT;
+        ptr = parameters.data_ptr();
+    }
+    else
+    {
+        p = qmlp::Tensor::HALF;
+        ptr = parameters.data_ptr();
+    }
+
+    auto v = n_->networkParameter(layer, bias, ptr, p);
+    return QUICKMLP_NAMESPACE::unwrap(v);
+}
 
 void bindNetwork(torch::Library& m)
 {
@@ -238,13 +266,48 @@ Use this to access and modify the state of that encoding.)doc")
             "The expected input channel count")
         .def("channels_out", &NetworkBindings::channelsOut,
             "The output channel count produced by the network")
-        //TODO: continue with the bindings
+        .def("num_layers", &NetworkBindings::numLayers,
+            "The number of layers in the network")
+        .def("num_network_parameters", &NetworkBindings::networkParameterCount,
+            "The number of parameters in the network (size of the parameter tensor)")
+        .def("create_inference_parameters", &NetworkBindings::createInferenceParameters,
+            "Creates the tensor storing the inference parameters. Dtype=float16, Shape=(num_network_parameters(),).\nNote: the memory is uninitialized!")
+        //  not needed in the public API:
+        //.def("create_gradient_parameters", &NetworkBindings::createGradientParameters,
+        //    "Creates the tensor storing the gradients. Dtype=float32, Shape=(num_network_parameters(),)")
+        .def("initialize_inference_parameters", &NetworkBindings::initializeInferenceParameters,
+            "Default initialization of the inference parameters")
+        .def("parameter_view", &NetworkBindings::view,
+            "Returns a view into the inference or the gradient tensor. The returning tensor allows read-write access to the weight and bias matrix at the given layer.")
+        .def("inference", &NetworkBindings::inference, R"doc(
+Performs inference, no intermediate states are recorded and differentiation is not possible.
+In most cases, you rather want to call 'forward', as this handles all cases (with and without gradients).
+:param input: The input positions, shape=(batch, dimensions), dtype=float32
+:param network_parameters: The network parameters. 1D tensor with self.num_network_parameters() elements and dtype=float16.
+   See also self.create_inference_parameters() for an utility that creates a tensor of the correct type.
+:param encoding_parameters: a vector with as many entries as there are input encodings.
+   For every entry, contains the parameters of that encoding or None if that encoding does not require any.
+:returns: The output predictions of shape (batch, out-dimensions), dtype=float32
+)doc", {torch::arg("input"), torch::arg("network_parameters"),
+            torch::arg("encoding_parameters")=std::vector<torch::Tensor>()})
+        .def("forward", &NetworkBindings::forward, R"doc(
+Performs a forward pass. This function is fully differentiable and can be seamlessly 
+integrated in the computation graph.
+:param input: The input positions, shape=(batch, dimensions), dtype=float32
+:param network_parameters: The network parameters. 1D tensor with self.num_network_parameters() elements and dtype=float16.
+   See also self.create_inference_parameters() for an utility that creates a tensor of the correct type.
+:param encoding_parameters: a vector with as many entries as there are input encodings.
+   For every entry, contains the parameters of that encoding or None if that encoding does not require any.
+:returns: The output predictions of shape (batch, out-dimensions), dtype=float32
+)doc", { torch::arg("input"), torch::arg("network_parameters"),
+            torch::arg("encoding_parameters") = std::vector<torch::Tensor>() })
         .def_pickle(
-            [](const c10::intrusive_ptr<NetworkBindings>& self) -> std::string {
-                return self->cfg();
+            [](const c10::intrusive_ptr<NetworkBindings>& self) -> std::vector<std::string> {
+                return { self->cfg(), self->parent() };
             },
-            [](std::string state) -> c10::intrusive_ptr<NetworkBindings> {
-                return c10::make_intrusive<NetworkBindings>(std::move(state));
+            [](std::vector<std::string> state) -> c10::intrusive_ptr<NetworkBindings> {
+                TORCH_CHECK(state.size() == 2, "Corrupt state");
+                return c10::make_intrusive<NetworkBindings>(std::move(state[0]), std::move(state[1]));
             })
         ;
 }

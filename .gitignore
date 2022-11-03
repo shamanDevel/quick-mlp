@@ -46,3 +46,5 @@ pybind11Targets.cmake
 .ipynb_checkpoints/
 /pytorch-tests/.idea
 /pytorch-tests/output
+/.idea/
+/pytorch-tests/kernel_cache/

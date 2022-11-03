@@ -167,10 +167,22 @@ public:
      */
     void initializeInferenceParameters(std::default_random_engine& rng);
 
-private:
+    /**
+     * \brief Returns the slice of the parameter corresponding
+     * to the weight matrix (bias=false) or bias vector (bias=true)
+     * of the specified layer 'layer'.
+     *
+     * Important: The resulting tensor <b>shared</b> the memory of the
+     * tensor set by \ref setNetworkParameter().
+     * This method is used during testing to validate the network
+     * against PyTorch.
+     *
+     * \param layer the layer index in [0, numLayers()-1]
+     * \param bias true->return bias vector; false->return weight matrix
+     * \param rawPtr the raw pointer: float32 for gradients, float16 for inference
+     */
     Tensor networkParameter(int layer, bool bias, void* rawPtr, Tensor::Precision precision);
 
-public:
     /**
      * \brief Returns the slice of the parameter corresponding
      * to the weight matrix (bias=false) or bias vector (bias=true)

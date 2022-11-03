@@ -5,10 +5,8 @@ import torch.autograd
 import torch.nn.init
 from typing import Optional
 
-torch.classes.load_library(os.path.join(os.path.split(__file__)[0], "../bin/qmlp.so"))
-print(torch.classes.loaded_libraries)
-
-torch.classes.qmlp.QuickMLP.set_debug_mode(True)
+from import_library import load_library
+load_library()
 
 class FusedEncoding(torch.nn.Module):
 

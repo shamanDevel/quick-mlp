@@ -2,6 +2,8 @@
 
 #include <torch/torch.h>
 
+//Source: https://github.com/mlverse/lantern/blob/cc84e430d258f7fd75e18ba9145887a492e51a35/src/Function.cpp
+
 
 // Context to save information during forward that can be accessed in backward
 struct TensorlistAutogradContext
