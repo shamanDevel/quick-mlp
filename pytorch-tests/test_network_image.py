@@ -1,4 +1,5 @@
 import os
+import numpy as np
 import torch
 import torch.nn.functional
 import torch.autograd
@@ -57,7 +58,7 @@ class FusedNetwork(torch.nn.Module):
         assert len(input.shape)==2
         assert input.shape[1] == self.num_input_channels()
 
-        return self._network.forward(input, self.network_parameter, list(self.encoding_parameters))
+        return self._network.forward(input, self.network_parameter, []) #list(self.encoding_parameters))
 
 
 def _optimize_image(cfg: str, parent: str, target_file: str, output: str):
@@ -75,8 +76,8 @@ def _optimize_image(cfg: str, parent: str, target_file: str, output: str):
     N = target.shape[0] * target.shape[1]
     X, Y = torch.meshgrid(torch.arange(target.shape[0]), torch.arange(target.shape[1]),
                           indexing='xy')
-    positions = torch.stack((X, Y), dim=-1).reshape((N, 2)).to(device=device)
-    target_pixels = torch.from_numpy(target).reshape((N, target.shape[2])).to(device=device)
+    positions = torch.stack((X, Y), dim=-1).reshape((N, 2)).to(dtype=torch.float32, device=device)
+    target_pixels = torch.from_numpy(target).reshape((N, target.shape[2])).to(dtype=torch.float32, device=device)
 
     # optimize for some epochs
     optim = torch.optim.Adam(network.parameters(), lr=1e-3)
@@ -91,6 +92,7 @@ def _optimize_image(cfg: str, parent: str, target_file: str, output: str):
         print(f"Epoch {epoch} -> loss={loss.item()}")
         if (epoch % save_every) == 0:
             prediction_image = prediction.detach().reshape((target.shape[0], target.shape[1], target.shape[2])).cpu().numpy()
+            prediction_image = np.clip(prediction_image*255, 0.0, 255.0).astype(np.uint8)
             imageio.imwrite(os.path.join("output", output+"-epoch-%d.png"%epoch), prediction_image)
 
 
@@ -102,3 +104,7 @@ def test_optimize_relu():
     target_file = os.path.join(this_folder, "input_art1.jpg")
     output = "network-relu"
     _optimize_image(cfg, parent, target_file, output)
+
+
+if __name__ == '__main__':
+    test_optimize_relu()

@@ -13,6 +13,8 @@ QUICKMLP_NAMESPACE_BEGIN
 QUICKMLP_NAMESPACE::Tensor wrap(const torch::Tensor& t);
 torch::Tensor unwrap(QUICKMLP_NAMESPACE::Tensor& t);
 
+c10::ScalarType unwrapDtype(QUICKMLP_NAMESPACE::Tensor::Precision p);
+
 void InitBindings();
 
 QUICKMLP_NAMESPACE_END

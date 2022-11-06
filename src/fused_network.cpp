@@ -103,7 +103,11 @@ FusedNetwork::FusedNetwork(const nlohmann::json& cfg, const std::filesystem::pat
                 static_cast<int>(layers_.size())));
         }
     }
-    channelsOut_ = prevInput;
+    if (channelsOut_ != prevInput)
+    {
+        throw configuration_error("The channel count of the last layer (%d) does not match the number of outputs specified at the top of the config file (%d)",
+            prevInput, channelsOut_);
+    }
 
     //padding
     for (int i=0; i<layers_.size(); ++i)
@@ -142,7 +146,8 @@ FusedNetwork::FusedNetwork(const nlohmann::json& cfg, const std::filesystem::pat
         {
             layers_.rbegin()->channelsOut = paddedOut;
             std::cout << "Warning: the last layer's output is not a multiple of " << MATRIX_SIZE <<
-                ", padding required. In the future, I will add special handling for the last layer." << std::endl;
+                ", but rather "  << currentOut << ", hence padding required. " <<
+                "In the future, I will add special handling for the last layer." << std::endl;
         }
     }
 

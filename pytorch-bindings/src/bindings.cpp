@@ -19,6 +19,11 @@ QUICKMLP_NAMESPACE_BEGIN
 
 QUICKMLP_NAMESPACE::Tensor wrap(const torch::Tensor& t)
 {
+    if (!t.defined())
+    {
+        //attempt to wrap an undefined tensor
+        return {};
+    }
     TORCH_CHECK(t.is_cuda(), "Tensor must reside on the GPU");
 
     qmlp::Tensor::Precision p;
@@ -28,7 +33,7 @@ QUICKMLP_NAMESPACE::Tensor wrap(const torch::Tensor& t)
         p = qmlp::Tensor::HALF;
     else
     {
-        TORCH_CHECK(false, "Unsupported datatype, only float and half tensors supported");
+        TORCH_CHECK(false, "Unsupported datatype, only float and half tensors supported, but is ", t.dtype());
     }
 
     std::vector<int32_t> sizes(t.sizes().begin(), t.sizes().end());
@@ -55,6 +60,17 @@ torch::Tensor unwrap(QUICKMLP_NAMESPACE::Tensor& t)
 
     return torch::from_blob(t.dataPtr<void>(), sizesTorch, stridesTorch,
         at::TensorOptions().device(c10::kCUDA).dtype(dtype));
+}
+
+c10::ScalarType unwrapDtype(qmlp::Tensor::Precision p)
+{
+    switch (p)
+    {
+    case Tensor::DOUBLE: return c10::kDouble;
+    case Tensor::FLOAT: return c10::kFloat;
+    case Tensor::HALF: return c10::kHalf;
+    default: return c10::kFloat;
+    }
 }
 
 QUICKMLP_NAMESPACE_END

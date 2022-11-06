@@ -15,7 +15,6 @@ torch::autograd::variable_list TensorlistFunction::apply(
 
     node->is_variable_input_.reserve(num_inputs);
 
-    std::cout << num_inputs << std::endl;
     for (size_t i = 0; i < num_inputs; i++)
     {
         node->is_variable_input_.push_back(true);
