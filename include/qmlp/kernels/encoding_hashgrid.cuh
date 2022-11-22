@@ -228,7 +228,8 @@ struct HypercubeInterpolator<NumDimensions, Fetcher, 0>
         //adjoint linear interpolation in 1D
         //last dimension
         float alphasWithout0 = alphas.reduceMulWithoutD(0, 1);
-        adjPosition[0] += alphasWithout0 * (dot1 - dot0);
+        float sign0 = signs[0];
+        adjPosition[0] += sign0 * alphasWithout0 * (dot1 - dot0);
         //all other dimensions
         for (int d=1; d<NumDimensions; ++d)
         {

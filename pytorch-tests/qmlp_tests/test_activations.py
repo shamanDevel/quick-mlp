@@ -1,9 +1,8 @@
-import os
 import torch
 import torch.nn.functional
 import torch.autograd
 
-from import_library import load_library
+from qmlp.import_library import load_library
 load_library()
 
 class FusedActivation(torch.nn.Module):
@@ -52,9 +51,9 @@ def _validate_activation(code:str, baseline: torch.nn.Module):
     loss.backward()
     grad_expected = input.grad.detach().clone()
 
-    print("Gradient:")
-    print("actual:"); print(grad_actual)
-    print("expected:"); print(grad_expected)
+    #print("Gradient:")
+    #print("actual:"); print(grad_actual)
+    #print("expected:"); print(grad_expected)
     assert torch.allclose(grad_actual, grad_expected)
 
     # TORCH JIT TEST
@@ -63,17 +62,18 @@ def _validate_activation(code:str, baseline: torch.nn.Module):
     activ.eval()
     traced_activ = torch.jit.trace(activ, (input, ))
     print(traced_activ.code)
-    print("Freeze:")
+    #print("Freeze:")
     traced_activ = torch.jit.freeze(traced_activ)
     print(traced_activ.code)
-    print("Save")
+    #print("Save")
     torch.jit.save(traced_activ, 'test.pt')
     
-    print("Load")
+    #print("Load")
     loaded_activ = torch.jit.load('test.pt')
     print(loaded_activ)
     output2 = loaded_activ(input)
-    print("Output:"); print(output2)
+    #print("Output:"); print(output2)
+    assert torch.allclose(output_actual, output2)
     
 def test_relu():
     _validate_activation("relu", torch.nn.ReLU())

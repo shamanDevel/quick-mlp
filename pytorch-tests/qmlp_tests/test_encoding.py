@@ -1,11 +1,10 @@
-import os
 import torch
 import torch.nn.functional
 import torch.autograd
 import torch.nn.init
 from typing import Optional
 
-from import_library import load_library
+from qmlp.import_library import load_library
 load_library()
 
 class FusedEncoding(torch.nn.Module):
@@ -65,12 +64,13 @@ def _validate_encoding(code: str, baseline: Optional[torch.nn.Module], channels_
 
     # REFERENCE AGAINST BASELINE
 
-    input = torch.rand((N, channels_in), dtype=torch.float, device=torch.device("cuda")) * 2 - 1
+    input = torch.rand((N, channels_in), dtype=torch.float, device=torch.device("cuda")) * 1.8 - 0.9
     #if channels_in==2:
     #    input[:4,:] = torch.tensor([
     #        [-1,-1], [-1,1], [1,-1], [1,1]
     #    ], dtype=torch.float, device=torch.device("cuda"))
     input = input.detach().requires_grad_(True)
+    if parameters is not None: parameters.grad = None
     output_actual = enc(input, parameters)
     assert output_actual.shape[0] == N
     assert output_actual.shape[1] == enc.num_output_channels()
@@ -87,6 +87,7 @@ def _validate_encoding(code: str, baseline: Optional[torch.nn.Module], channels_
 
     if baseline is not None:
         input.grad = None
+        if parameters is not None: parameters.grad = None
         output_expected = baseline(input, parameters)
         print("Expected:"); print(output_expected)
         assert torch.allclose(output_actual, output_expected)
@@ -100,13 +101,13 @@ def _validate_encoding(code: str, baseline: Optional[torch.nn.Module], channels_
     print("actual:"); print(grad_input_actual)
     if baseline is not None:
         print("expected:"); print(grad_input_expected)
-        #assert torch.allclose(grad_input_actual, grad_input_expected)
+        assert torch.allclose(grad_input_actual, grad_input_expected)
     if enc.has_parameters():
         print("Gradient for the parameters:")
         print("actual:"); print(grad_parameter_actual)
         if baseline is not None:
             print("expected:"); print(grad_parameter_expected)
-            #assert torch.allclose(grad_parameter_actual, grad_parameter_expected)
+            assert torch.allclose(grad_parameter_actual, grad_parameter_expected)
 
     # GRAD TEST
     def wrap_input(x, params=parameters, fun=enc):
@@ -129,21 +130,22 @@ def _validate_encoding(code: str, baseline: Optional[torch.nn.Module], channels_
     else:
         traced_activ = torch.jit.trace(enc, (input,))
     print(traced_activ.code)
-    print("Freeze:")
+    #print("Freeze:")
     traced_activ = torch.jit.freeze(traced_activ)
     print(traced_activ.code)
-    print("Save")
+    #print("Save")
     torch.jit.save(traced_activ, 'test.pt')
 
-    print("Load")
+    #print("Load")
     loaded_activ = torch.jit.load('test.pt')
-    print(loaded_activ)
+    #print(loaded_activ)
     if enc.has_parameters():
-        output2 = loaded_activ(input,parameters)
+        output2 = loaded_activ(input, parameters)
     else:
         output2 = loaded_activ(input)
-    print("Output:")
-    print(output2)
+    #print("Output:")
+    #print(output2)
+    assert torch.allclose(output_actual, output2)
 
 def test_identity():
     cfg = """

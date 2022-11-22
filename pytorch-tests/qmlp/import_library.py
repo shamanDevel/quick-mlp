@@ -12,7 +12,7 @@ def load_library():
     else:
         _suffix = '.so'
 
-    torch.classes.load_library(os.path.join(os.path.split(__file__)[0], "../bin/qmlp"+_suffix))
+    torch.classes.load_library(os.path.join(os.path.split(__file__)[0], "../../bin/qmlp"+_suffix))
     print(torch.classes.loaded_libraries)
 
     torch.classes.qmlp.QuickMLP.set_compile_debug_mode(False)

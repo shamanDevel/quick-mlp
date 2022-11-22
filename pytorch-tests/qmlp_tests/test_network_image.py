@@ -62,7 +62,7 @@ class FusedNetwork(torch.nn.Module):
 
 
 def _optimize_image(cfg: str, parent: str, target_file: str, output: str):
-    os.makedirs("output", exist_ok=True)
+    os.makedirs("../output", exist_ok=True)
 
     device = torch.device("cuda")
 
@@ -81,7 +81,7 @@ def _optimize_image(cfg: str, parent: str, target_file: str, output: str):
 
     # optimize for some epochs
     optim = torch.optim.Adam(network.parameters(), lr=1e-3)
-    epochs = 100
+    epochs = 0 #100
     save_every = 10
     for epoch in range(epochs+1):
         optim.zero_grad()
@@ -93,15 +93,15 @@ def _optimize_image(cfg: str, parent: str, target_file: str, output: str):
         if (epoch % save_every) == 0:
             prediction_image = prediction.detach().reshape((target.shape[0], target.shape[1], target.shape[2])).cpu().numpy()
             prediction_image = np.clip(prediction_image*255, 0.0, 255.0).astype(np.uint8)
-            imageio.imwrite(os.path.join("output", output+"-epoch-%d.png"%epoch), prediction_image)
+            imageio.imwrite(os.path.join("../output", output + "-epoch-%d.png" % epoch), prediction_image)
 
 
 def test_optimize_relu():
     this_folder = os.path.split(__file__)[0]
-    with open(os.path.join(this_folder, "network-2d-relu.json"), "r") as f:
+    with open(os.path.join(this_folder, "../resources/network-2d-relu.json"), "r") as f:
         cfg = f.read()
     parent = "."
-    target_file = os.path.join(this_folder, "input_art1.jpg")
+    target_file = os.path.join(this_folder, "../resources/input_art1.jpg")
     output = "network-relu"
     _optimize_image(cfg, parent, target_file, output)
 
