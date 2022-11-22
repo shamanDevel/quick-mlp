@@ -4,49 +4,7 @@ import torch.autograd
 import torch.nn.init
 from typing import Optional
 
-from qmlp.import_library import load_library
-load_library()
-
-class FusedEncoding(torch.nn.Module):
-
-    def __init__(self, cfg: str):
-        super().__init__()
-        self._cfg = cfg
-        self._encoding = torch.classes.qmlp.Encoding(cfg)
-        self._max_input_channel: int = self._encoding.max_input_channel()
-        self._num_output_channels : int= self._encoding.num_output_channels()
-        self._has_parameters: bool = self._encoding.has_parameters()
-
-    def max_input_channel(self) -> int:
-        return self._max_input_channel
-
-    def num_output_channels(self) -> int:
-        return self._num_output_channels
-
-    def has_parameters(self) -> bool:
-        return self._has_parameters
-
-    def create_parameter_tensor(self) -> torch.Tensor:
-        assert self.has_parameters()
-        t: torch.Tensor = self._encoding.create_inference_parameters()
-        torch.nn.init.normal_(t)
-        return t
-
-    def forward(self, input: torch.Tensor, parameters: torch.Tensor=None) -> torch.Tensor:
-        # no grad version:
-        # return self._encoding.inference(input)
-
-        # with autograd support
-        if parameters is None:
-            return self._encoding.forward(input)
-        else:
-            return self._encoding.forward_with_parameter(input, parameters)
-
-    def __repr__(self):
-        return f'FusedEncoding("""{self._cfg}""")'
-
-    def __str__(self):
-        return f'FusedEncoding("""{self._cfg}""")'
+from qmlp.encoding import FusedEncoding
 
 
 def _validate_encoding(code: str, baseline: Optional[torch.nn.Module], channels_in: int):

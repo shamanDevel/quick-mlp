@@ -7,13 +7,9 @@ import torch.nn.init
 import imageio
 import torch.optim
 
-from qmlp.import_library import load_library
-load_library()
+from qmlp.pullpush import pullpush
 
 def test_pushpull():
-
-    # fetch pull-push implementation
-    pullpush = torch.classes.qmlp.utils.pullpush
 
     # load test image from the "Painter" dataset
     ground_truth_image = imageio.imread("resources/input_art1.jpg")
@@ -31,7 +27,7 @@ def test_pushpull():
             img = torch.stack([img,img,img], dim=1) # B,3,H,W
         img = img[0] # first batch
         img8 = np.clip(img.permute(1, 2, 0).cpu().numpy() * 255, 0, 255).astype(np.uint8)
-        imageio.imwrite(os.path.join("../output", name), img8)
+        imageio.imwrite(os.path.join("output", name), img8)
 
     # to PyTorch and to B,C,H,W format
     device = torch.device("cuda")

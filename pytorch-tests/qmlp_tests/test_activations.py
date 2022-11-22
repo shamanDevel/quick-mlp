@@ -2,27 +2,8 @@ import torch
 import torch.nn.functional
 import torch.autograd
 
-from qmlp.import_library import load_library
-load_library()
+from qmlp.activation import FusedActivation
 
-class FusedActivation(torch.nn.Module):
-    
-    def __init__(self, cfg:str):
-        super().__init__()
-        self._cfg = cfg
-        self._activation = torch.classes.qmlp.Activation(cfg)
-        
-    def forward(self, input: torch.Tensor) -> torch.Tensor:
-        # no grad version:
-        #return self._activation.inference(input)
-        
-        # with autograd support
-        return self._activation.forward(input)
-        
-    def __repr__(self):
-        return f"FusedActivation(\"{self._cfg}\")"
-    def __str__(self):
-        return f"FusedActivation(\"{self._cfg}\")"
 
 def _validate_activation(code:str, baseline: torch.nn.Module):
     
