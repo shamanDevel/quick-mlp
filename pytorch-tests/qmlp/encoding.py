@@ -1,5 +1,6 @@
 import torch
 from torchtyping import TensorType
+from typing import overload
 
 from .import_library import load_library
 load_library()
@@ -10,6 +11,7 @@ class FusedEncoding(torch.nn.Module):
     Fused encoding in a custom CUDA kernel
     """
 
+    @overload
     def __init__(self, cfg: str):
         """
         Creates the encoding from the json-string given in 'cfg'.
@@ -46,9 +48,24 @@ class FusedEncoding(torch.nn.Module):
         </code>
 
         """
+        ...
+
+    @overload
+    def __init__(self, impl: torch.classes.qmlp.Encoding):
+        """
+        Wraps the encoding directly.
+        This is used by the fused network
+        """
+        ...
+
+    def __init__(self, cfg_or_impl):
         super().__init__()
-        self._cfg = cfg
-        self._encoding = torch.classes.qmlp.Encoding(cfg)
+        if isinstance(cfg_or_impl, str):
+            self._cfg = cfg_or_impl
+            self._encoding = torch.classes.qmlp.Encoding(cfg_or_impl)
+        elif isinstance(cfg_or_impl, torch.classes.qmlp.Encoding):
+            self._cfg = cfg_or_impl.to_json()
+            self._encoding = cfg_or_impl
         self._max_input_channel: int = self._encoding.max_input_channel()
         self._num_output_channels : int= self._encoding.num_output_channels()
         self._has_parameters: bool = self._encoding.has_parameters()
