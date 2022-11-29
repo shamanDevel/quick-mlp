@@ -10,6 +10,30 @@ class FusedActivation(torch.nn.Module):
     Fused activation in a custom CUDA kernel
     """
 
+    @staticmethod
+    def get_activation(name: str) -> torch.nn.Module:
+        """
+        Create the PyTorch module for the activations specified
+        in builtin-activation.json of the fused kernels.
+        This can be used to verify the fused kernels
+        """
+        if name == "relu":
+            return torch.nn.ReLU()
+        elif name == "celu":
+            return torch.nn.CELU()
+        elif name == "sine":
+            class Sine(torch.nn.Module):
+                def forward(self, x):
+                    return torch.sin(x)
+            return Sine()
+        elif name == "identity":
+            class Identity(torch.nn.Module):
+                def forward(self, x):
+                    return x
+            return Identity()
+        else:
+            raise ValueError("Unknown or user-specified activation")
+
     def __init__(self, cfg: str):
         """
         Creates the fused activation.

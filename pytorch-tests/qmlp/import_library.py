@@ -16,7 +16,7 @@ def load_library():
     print(torch.classes.loaded_libraries)
 
     torch.classes.qmlp.QuickMLP.set_compile_debug_mode(False)
-    torch.classes.qmlp.QuickMLP.set_verbose_logging(True)
+    torch.classes.qmlp.QuickMLP.set_verbose_logging(False)
     load_library.library_loaded = True
 
 load_library.library_loaded = False

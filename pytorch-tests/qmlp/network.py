@@ -1,8 +1,10 @@
 import torch
 from torchtyping import TensorType
+import json
 
 from .import_library import load_library
 from .encoding import FusedEncoding
+from .activation import FusedActivation
 load_library()
 
 
@@ -27,13 +29,15 @@ class FusedNetwork(torch.nn.Module):
 
         self._network = torch.classes.qmlp.Network(cfg, parent)
         self._num_output_channels: int = self._network.channels_out()
+        self._num_layers: int = self._network.num_layers()
 
-        network_parameter = self._network.create_inference_parameters()
-        self._network.initialize_inference_parameters(network_parameter)
-        network_parameter.requires_grad_(True)
-        self.network_parameter = torch.nn.Parameter(network_parameter)
-        print("Number of trainable network parameters:", network_parameter.shape)
+        weights = self._network.create_inference_parameters()
+        self._network.initialize_inference_parameters(weights)
+        weights.requires_grad_(True)
+        self.weights = torch.nn.Parameter(weights)
+        print("Number of trainable network parameters:", weights.shape)
 
+        # encodings
         self._num_encodings: int = self._network.num_encodings()
         assert self._num_encodings > 0
         self._max_input_channel = 0
@@ -54,7 +58,7 @@ class FusedNetwork(torch.nn.Module):
                 dummy = torch.zeros((1,))
                 encoding_parameters[i] = torch.nn.Parameter(dummy)
         self.encoding_parameters = torch.nn.ParameterList(encoding_parameters)
-        print("Num input channels:", self.num_input_channels())
+        print("Num input channels:", self.channels_in())
 
     @staticmethod
     def MatrixSize() -> int:
@@ -108,19 +112,139 @@ class FusedNetwork(torch.nn.Module):
         """ The output channel count produced by the network """
         return self._network.channels_out()
 
-    # TODO: access to weights
+    def num_layers(self) -> int:
+        return self._num_layers
+
+    def get_weight(self, layer: int, bias: bool, grad: bool) -> torch.Tensor:
+        """
+        Returns a copy of the weight tensor
+        :param layer: the layer index
+        :param bias: True -> bias; False -> weight matrix
+        :param grad: True -> gradient; False -> inference parameters
+        :return: copy of the weight tensor
+        """
+        p = self.weights.grad if grad else self.weights.data
+        t = self._network.parameter_view(layer, bias, p)
+        return torch.clone(t.detach())
+
+    def set_weight(self, layer: int, bias: bool, grad: bool, value: torch.Tensor):
+        p = self.weights.grad if grad else self.weights.data
+        t = self._network.parameter_view(layer, bias, p)
+        assert value.shape == t.shape
+        assert value.dtype == t.dtype
+        t.copy_(value)
 
     def num_output_channels(self) -> int:
         return self._num_output_channels
 
-    def forward(self, input: torch.Tensor) -> torch.Tensor:
-        assert len(input.shape)==2
-        assert input.shape[1] == self.num_input_channels()
+    def forward(self, x: TensorType["batch", "in-channels", float]
+                ) -> TensorType["batch", "out-channels", float]:
+        assert len(x.shape)==2
+        assert x.shape[1] == self.channels_in()
 
-        return self._network.forward(input, self.network_parameter, []) #list(self.encoding_parameters))
+        return self._network.forward(x, self.weights, []) #list(self.encoding_parameters))
 
     def __repr__(self):
         return f"FusedNetwork(\"{self._cfg}\")"
 
     def __str__(self):
         return f"FusedNetwork(\"{self._cfg}\")"
+
+
+class SimulatedNetwork(torch.nn.Module):
+    """
+    Simulates the fused network in regular PyTorch.
+    """
+
+    def __init__(self, cfg: str):
+        """
+        Constructs a network module that simulates the fused network.
+        :param cfg:
+        """
+        super().__init__()
+        cfg = json.loads(cfg)
+        self._channels_in = cfg['num_inputs']
+        self._channels_out = cfg['num_outputs']
+
+        # verify encoding, only 'Identity' allowed in simulation mode
+        if len(cfg['encodings']) == 0:
+            # implicit identity encoding, all is fine.
+            pass
+        elif len(cfg['encodings']) == 1:
+            e = cfg['encodings'][0]
+            if e['id'] != "Identity" or e['start_in'] != 0 or e['n_in'] != self._channels_in:
+                raise ValueError("Only identity encoding supported and it must consume all inputs")
+        else:
+            raise ValueError("Only a single encoding supported")
+
+        # Create layers
+        layers = []
+        n_in = self._channels_in
+        n_out = None
+        self._has_bias = []
+        for layer in cfg['network']:
+            n_out = layer['n_out']
+            bias = layer['bias']
+            activation = FusedActivation.get_activation(layer['activation'])
+            layers.append(torch.nn.Linear(n_in, n_out, bias=bias, dtype=torch.float16))
+            layers.append(activation)
+            n_in = n_out
+            self._has_bias.append(bias)
+        if n_out != self._channels_out:
+            raise ValueError("Last layer does not match the number of outputs")
+        self.layers = torch.nn.Sequential(*layers)
+        self._num_layers = len(cfg['network'])
+
+    def channels_in(self):
+        return self._channels_in
+
+    def channels_out(self):
+        return self._channels_out
+
+    def num_layers(self) -> int:
+        return self._num_layers
+
+    def has_bias(self, layer: int):
+        return self._has_bias[layer]
+
+    def get_weight(self, layer: int, bias: bool, grad: bool) -> torch.Tensor:
+        """
+        Returns a copy of the weight tensor
+        :param layer: the layer index
+        :param bias: True -> bias; False -> weight matrix
+        :param grad: True -> gradient; False -> inference parameters
+        :return: copy of the weight tensor
+        """
+        layer = self.layers[2*layer]
+        assert isinstance(layer, torch.nn.Linear)
+        t = layer.bias if bias else layer.weight
+        return torch.clone(t.grad.detach()) if grad else torch.clone(t.detach())
+
+    def set_weight(self, layer: int, bias: bool, grad: bool, value: torch.Tensor):
+        layer = self.layers[2 * layer]
+        assert isinstance(layer, torch.nn.Linear)
+        t = layer.bias if bias else layer.weight
+        if grad:
+            t.grad = torch.clone(value.detach())
+        else:
+            t.copy_(value.detach())
+
+    def forward(self, x: TensorType["batch", "in-channels", float]
+                ) -> TensorType["batch", "out-channels", float]:
+        return self.layers(x.to(torch.float16)).to(torch.float32)
+
+
+def copy_torch_to_fused(dst: FusedNetwork, src: SimulatedNetwork, grad: bool = False):
+    """
+    Copies the weights (or gradients if grad=True) of src to dst
+    :param dst: the destination fused network
+    :param src: the source simulated network
+    :param grad: true if gradients should be copied instead of weights
+    """
+    assert dst.num_layers() == src.num_layers()
+    for layer in range(src.num_layers()):
+        w = src.get_weight(layer, False, grad)
+        dst.set_weight(layer, False, grad, w)
+        if src.has_bias(layer):
+            b = src.get_weight(layer, True, grad)
+            dst.set_weight(layer, True, grad, b)
