@@ -65,7 +65,7 @@ def _compare_tensors(actual: torch.Tensor, expected: torch.Tensor, name: str,
             print(f"{bcolors.WARNING}{name} Tensors are not the same, but the number of errors {fraction_failed*100:.2f}% is within the tolerance{bcolors.ENDC}")
 
 
-def _compare_networks(actual: FusedNetwork, expected: SimulatedNetwork, grad:bool = False,
+def _compare_networks(actual: FusedNetwork, expected: SimulatedNetwork, grad: bool = False,
                       rtol=1e-5, atol=1e-8):
     for layer in range(expected.num_layers()):
         w_expected = expected.get_weight(layer, False, grad)
@@ -98,11 +98,13 @@ def _test_network(cfg: str):
     network_torch.to(device)
 
     # number of elements to test
-    Nx = [16, 32]#, 32, 128, 577]
+    Nx = [16, 32, 128] # 577
     for N in Nx:
         print(f"Run with N={N} input elements")
         input = torch.randn((N, n_in), device=device, dtype=torch.float32)
-        grad_output = torch.randn((N, n_out), device=device, dtype=torch.float32)
+        #grad_output = torch.randn((N, n_out), device=device, dtype=torch.float32)
+        grad_output = torch.zeros((N, n_out), device=device, dtype=torch.float32)
+        grad_output[1, 2] = 1.0;
 
         # 1. Test if the output of the inference pass matches
         with torch.no_grad():
@@ -113,7 +115,7 @@ def _test_network(cfg: str):
                              rtol, atol)
 
         # backward
-        for p in network_fused.parameters():
+        for p in network_torch.parameters():
             p.grad = None
         for p in network_fused.parameters():
             p.grad = None
