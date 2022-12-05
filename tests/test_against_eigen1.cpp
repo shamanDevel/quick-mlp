@@ -25,27 +25,27 @@ using namespace qmlp::tests;
 TEMPLATE_TEST_CASE_SIG("test-against-eigen-1", "[eigen]",
     ((int Channels0, int Channels1, bool Bias1, TestActivationType Activ1),
         Channels0, Channels1, Bias1, Activ1),
-    (16, 16, false, TestActivationType::SINE),
-    (16, 16, false, TestActivationType::CELU),
-    (16, 16, false, TestActivationType::IDENTITY),
-    (16, 32, false, TestActivationType::SINE),
-    (16, 32, false, TestActivationType::CELU),
-    (16, 32, false, TestActivationType::IDENTITY),
-    (48, 16, false, TestActivationType::SINE),
-    (48, 16, false, TestActivationType::CELU),
-    (48, 16, false, TestActivationType::IDENTITY),
-    (48, 32, false, TestActivationType::SINE),
-    (48, 32, false, TestActivationType::CELU),
-    (48, 32, false, TestActivationType::IDENTITY),
-    (16, 48, false, TestActivationType::SINE),
-    (16, 48, false, TestActivationType::CELU),
-    (16, 48, false, TestActivationType::IDENTITY),
-    (32, 16, false, TestActivationType::SINE),
-    (32, 16, false, TestActivationType::CELU),
-    (32, 16, false, TestActivationType::IDENTITY),
-    (32, 48, false, TestActivationType::SINE),
-    (32, 48, false, TestActivationType::CELU),
-    (32, 48, false, TestActivationType::IDENTITY)//,
+    (32, 48, false, TestActivationType::SINE)//,
+    //(16, 16, false, TestActivationType::CELU),
+    //(16, 16, false, TestActivationType::IDENTITY),
+    //(16, 32, false, TestActivationType::SINE),
+    //(16, 32, false, TestActivationType::CELU),
+    //(16, 32, false, TestActivationType::IDENTITY),
+    //(48, 16, false, TestActivationType::SINE),
+    //(48, 16, false, TestActivationType::CELU),
+    //(48, 16, false, TestActivationType::IDENTITY),
+    //(48, 32, false, TestActivationType::SINE),
+    //(48, 32, false, TestActivationType::CELU),
+    //(48, 32, false, TestActivationType::IDENTITY),
+    //(16, 48, false, TestActivationType::SINE),
+    //(16, 48, false, TestActivationType::CELU),
+    //(16, 48, false, TestActivationType::IDENTITY),
+    //(32, 16, false, TestActivationType::SINE),
+    //(32, 16, false, TestActivationType::CELU),
+    //(32, 16, false, TestActivationType::IDENTITY),
+    //(32, 48, false, TestActivationType::SINE),
+    //(32, 48, false, TestActivationType::CELU),
+    //(32, 48, false, TestActivationType::IDENTITY)//,
     //(16, 16, true, TestActivationType::SINE),
     //(16, 16, true, TestActivationType::CELU),
     //(16, 16, true, TestActivationType::IDENTITY),
@@ -92,13 +92,14 @@ TEMPLATE_TEST_CASE_SIG("test-against-eigen-1", "[eigen]",
     auto root = current.parent_path().parent_path();
     auto configFolder = root / "network_configs";
 
-    int N = 77;
+    int N = 513;  //TODO: fails for large networks (>32) and large inputs (>512)
+
     int Trials = 5;//20;
     CUstream stream = nullptr;
 
     //create network
     QuickMLP::Instance().setCompileDebugMode(false);
-    QuickMLP::Instance().setVerboseLogging(false);
+    QuickMLP::Instance().setVerboseLogging(true);
     auto network = std::make_shared<qmlp::FusedNetwork>(cfg, configFolder);
     SECTION("parallel")
     {

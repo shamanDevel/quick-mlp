@@ -496,7 +496,7 @@ void FusedNetwork::inference(const Tensor& input, Tensor& output, CUstream strea
         CKL_DIV_UP(numel, inferenceKernel_->blockSize), 
         inferenceKernel_->fun.minGridSize());
     if (QuickMLP::Instance().isVerboseLogging()) {
-        std::cout << "Launch with a block size of " << inferenceKernel_->blockSize << " and a shared memory size of " <<
+        std::cout << "Launch " << inferenceKernel_->fun.name() << " with a block size of " << inferenceKernel_->blockSize << " and a shared memory size of " <<
             inferenceKernel_->sharedMemorySize << std::endl;
     }
     //launch
@@ -673,7 +673,7 @@ void FusedNetwork::forward(const Tensor& input, Tensor& output, void* tmpMemory,
         CKL_DIV_UP(numel, forwardKernel_->blockSize),
         forwardKernel_->fun.minGridSize());
     if (QuickMLP::Instance().isVerboseLogging()) {
-        std::cout << "Launch with a block size of " << forwardKernel_->blockSize << " and a shared memory size of " <<
+        std::cout << "Launch " << forwardKernel_->fun.name() << " with a block size of " << forwardKernel_->blockSize << " and a shared memory size of " <<
             forwardKernel_->sharedMemorySize << std::endl;
     }
     //launch
@@ -1065,8 +1065,8 @@ void FusedNetwork::adjoint(const Tensor& input, const Tensor& adjOutput, Adjoint
 
             int gridSize = 1; //one block only (non-atomic reduction)!
             if (QuickMLP::Instance().isVerboseLogging()) {
-                std::cout << "Launch layer " << layer << " with a block size of " << ck.blockSize << " and a shared memory size of " <<
-                    ck.sharedMemorySize << " (" << ck.fun.name() << ")" << std::endl;
+                std::cout << "Launch " << ck.fun.name() << ", layer " << layer << ", with a block size of " << ck.blockSize << 
+                    " and a shared memory size of " << ck.sharedMemorySize << std::endl;
             }
             if (ali.offsetIn>=0)
             {

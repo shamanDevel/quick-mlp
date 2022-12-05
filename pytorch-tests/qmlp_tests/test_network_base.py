@@ -98,13 +98,11 @@ def _test_network(cfg: str):
     network_torch.to(device)
 
     # number of elements to test
-    Nx = [16, 32, 128] # 577
+    Nx = [16, 32, 128, 513]
     for N in Nx:
         print(f"Run with N={N} input elements")
         input = torch.randn((N, n_in), device=device, dtype=torch.float32)
-        #grad_output = torch.randn((N, n_out), device=device, dtype=torch.float32)
-        grad_output = torch.zeros((N, n_out), device=device, dtype=torch.float32)
-        grad_output[1, 2] = 1.0;
+        grad_output = torch.randn((N, n_out), device=device, dtype=torch.float32)
 
         # 1. Test if the output of the inference pass matches
         with torch.no_grad():
