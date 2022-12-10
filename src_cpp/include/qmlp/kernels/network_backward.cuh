@@ -56,6 +56,9 @@ __global__ void NetworkKernelBackward(
 
     KERNEL_1D_LOOP_SYNC(index, valid, numel)
     {
+        //global warp index, used to index the forward & adjoint tmp memory
+        const int globalWarpID = index / 32;
+
         //storage for the intermediate results
         half* adjIntermediateResultsWarp = sIntermediateResults + 32 * MAX_CHANNELS * warpID;
         half* adjIntermediateResultsThread = sIntermediateResults + MAX_CHANNELS * threadIdx.x;

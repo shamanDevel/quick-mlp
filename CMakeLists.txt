@@ -18,7 +18,7 @@ endif()
 cmake_policy(SET CMP0127 NEW)
 
 # Extract project version from source
-file(STRINGS "${CMAKE_CURRENT_SOURCE_DIR}/include/qmlp/common.h"
+file(STRINGS "${CMAKE_CURRENT_SOURCE_DIR}/src_cpp/include/qmlp/common.h"
      qmlp_version_defines REGEX "#define QUICKMLP_VERSION_(MAJOR|MINOR|PATCH) ")
 
 foreach(ver ${qmlp_version_defines})
@@ -106,50 +106,50 @@ add_subdirectory(third-party/magic_enum)
 
 # Files
 set(QUICKMLP_HEADERS
-    include/qmlp/common.h
-    include/qmlp/activation.h
-    include/qmlp/iencoding.h
-    include/qmlp/encoding_identity.h
-    include/qmlp/encoding_hashgrid.h
-    include/qmlp/encoding_line_integration.h
-    include/qmlp/fused_network.h
-    include/qmlp/qmlp.h
-    include/qmlp/errors.h
-    include/qmlp/tensor.h
-    include/qmlp/tmp_memory.h
-    include/qmlp/utils.h
+    src_cpp/include/qmlp/common.h
+    src_cpp/include/qmlp/activation.h
+    src_cpp/include/qmlp/iencoding.h
+    src_cpp/include/qmlp/encoding_identity.h
+    src_cpp/include/qmlp/encoding_hashgrid.h
+    src_cpp/include/qmlp/encoding_line_integration.h
+    src_cpp/include/qmlp/fused_network.h
+    src_cpp/include/qmlp/qmlp.h
+    src_cpp/include/qmlp/errors.h
+    src_cpp/include/qmlp/tensor.h
+    src_cpp/include/qmlp/tmp_memory.h
+    src_cpp/include/qmlp/utils.h
     )
     
 set(QUICKMLP_RESOURCES
-    include/qmlp/builtin-activations.json
+    src_cpp/include/qmlp/builtin-activations.json
 
-    include/qmlp/kernels/common.cuh
-    include/qmlp/kernels/loops.cuh
-    include/qmlp/kernels/tensor.cuh
-    include/qmlp/kernels/encoding_identity.cuh
-    include/qmlp/kernels/encoding_hashgrid.cuh
-    include/qmlp/kernels/encoding_hashgrid_config.cuh
-    include/qmlp/kernels/encoding_line_integration.cuh
-    include/qmlp/kernels/encoding_line_integration_config.cuh
-    include/qmlp/kernels/layer.cuh
-    include/qmlp/kernels/network_forward.cuh
-    include/qmlp/kernels/network_backward.cuh
-    include/qmlp/kernels/network_weight_update_block.cuh
-    include/qmlp/kernels/activation_kernels.cuh
-    include/qmlp/kernels/encoding_kernels.cuh
-    include/qmlp/kernels/pullpush.cuh
+    src_cpp/include/qmlp/kernels/common.cuh
+    src_cpp/include/qmlp/kernels/loops.cuh
+    src_cpp/include/qmlp/kernels/tensor.cuh
+    src_cpp/include/qmlp/kernels/encoding_identity.cuh
+    src_cpp/include/qmlp/kernels/encoding_hashgrid.cuh
+    src_cpp/include/qmlp/kernels/encoding_hashgrid_config.cuh
+    src_cpp/include/qmlp/kernels/encoding_line_integration.cuh
+    src_cpp/include/qmlp/kernels/encoding_line_integration_config.cuh
+    src_cpp/include/qmlp/kernels/layer.cuh
+    src_cpp/include/qmlp/kernels/network_forward.cuh
+    src_cpp/include/qmlp/kernels/network_backward.cuh
+    src_cpp/include/qmlp/kernels/network_weight_update_block.cuh
+    src_cpp/include/qmlp/kernels/activation_kernels.cuh
+    src_cpp/include/qmlp/kernels/encoding_kernels.cuh
+    src_cpp/include/qmlp/kernels/pullpush.cuh
 )
 
 set(QUICKMLP_SOURCES
-    src/qmlp.cpp
-    src/activation.cpp
-    src/tensor.cpp
-    src/encoding_identity.cpp
-    src/encoding_hashgrid.cpp
-    src/encoding_line_integration.cpp
-    src/iencoding.cpp
-    src/fused_network.cpp
-    src/utils.cpp
+    src_cpp/src/qmlp.cpp
+    src_cpp/src/activation.cpp
+    src_cpp/src/tensor.cpp
+    src_cpp/src/encoding_identity.cpp
+    src_cpp/src/encoding_hashgrid.cpp
+    src_cpp/src/encoding_line_integration.cpp
+    src_cpp/src/iencoding.cpp
+    src_cpp/src/fused_network.cpp
+    src_cpp/src/utils.cpp
     )
 
 # Compare with grep and warn if mismatched
@@ -158,7 +158,7 @@ if(QUICKMLP_MASTER_PROJECT AND NOT CMAKE_VERSION VERSION_LESS 3.12)
     GLOB_RECURSE _qmlp_header_check
     LIST_DIRECTORIES false
     RELATIVE "${CMAKE_CURRENT_SOURCE_DIR}"
-    CONFIGURE_DEPENDS "include/qmlp/*")
+    CONFIGURE_DEPENDS "src_cpp/include/qmlp/*")
   set(_qmlp_here_only ${QUICKMLP_HEADERS} ${QUICKMLP_RESOURCES})
   set(_qmlp_disk_only ${_qmlp_header_check})
   list(REMOVE_ITEM _qmlp_here_only ${_qmlp_header_check})
@@ -174,7 +174,7 @@ if(QUICKMLP_MASTER_PROJECT AND NOT CMAKE_VERSION VERSION_LESS 3.12)
     GLOB_RECURSE _qmlp_src_check
     LIST_DIRECTORIES false
     RELATIVE "${CMAKE_CURRENT_SOURCE_DIR}"
-    CONFIGURE_DEPENDS "src/*.cpp")
+    CONFIGURE_DEPENDS "src_cpp/src/*.cpp")
   set(_qmlp_here_only ${QUICKMLP_SOURCES})
   set(_qmlp_disk_only ${_qmlp_src_check})
   list(REMOVE_ITEM _qmlp_here_only ${_qmlp_src_check})
@@ -189,16 +189,16 @@ endif()
 
 # CMake 3.12 added list(TRANSFORM <list> PREPEND
 # But we can't use it yet
-string(REPLACE "include/" "${CMAKE_CURRENT_SOURCE_DIR}/include/" QUICKMLP_HEADERS
+string(REPLACE "src_cpp/include/" "${CMAKE_CURRENT_SOURCE_DIR}/src_cpp/include/" QUICKMLP_HEADERS
                "${QUICKMLP_HEADERS}")
-string(REPLACE "include/" "${CMAKE_CURRENT_SOURCE_DIR}/include/" QUICKMLP_RESOURCES
+string(REPLACE "src_cpp/include/" "${CMAKE_CURRENT_SOURCE_DIR}/src_cpp/include/" QUICKMLP_RESOURCES
                "${QUICKMLP_RESOURCES}")
-string(REPLACE "src/" "${CMAKE_CURRENT_SOURCE_DIR}/src/" QUICKMLP_SOURCES
+string(REPLACE "src_cpp/src/" "${CMAKE_CURRENT_SOURCE_DIR}/src_cpp/src/" QUICKMLP_SOURCES
                "${QUICKMLP_SOURCES}")
 
 # Cache variable so this can be used in parent projects
 set(qmlp_INCLUDE_DIR
-    "${CMAKE_CURRENT_LIST_DIR}/include"
+    "${CMAKE_CURRENT_LIST_DIR}/src_cpp/include"
     CACHE INTERNAL "Directory where qmlp headers are located")
 
 # Backward compatible variable for add_subdirectory mode
@@ -256,16 +256,16 @@ endif()
 
 # BUILD_TESTING takes priority, but only if this is the master project
 if(QUICKMLP_MASTER_PROJECT AND BUILD_TESTING)
-    add_subdirectory(tests)
+    add_subdirectory(tests_cpp)
 else()
   if(QUICKMLP_TEST)
-    add_subdirectory(tests)
+    add_subdirectory(tests_cpp)
   endif()
 endif()
 
 # BUILD PYTORCH BINDINGS
 if (QUICKMLP_PYTORCH_BINDINGS)
-    add_subdirectory(pytorch-bindings)
+    add_subdirectory(src_cpp/pytorch-bindings)
 endif()
 
 # Better symmetry with find_package(qmlp CONFIG) mode.

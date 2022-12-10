@@ -52,6 +52,9 @@ __global__ void NetworkKernelInferenceAndForward(
 
     KERNEL_1D_LOOP_SYNC(index, valid, numel)
     {
+        //global warp index, used to index the forward tmp memory
+        const int globalWarpID = index / 32;
+
         //storage for the intermediate results
         half* intermediateResultsWarp = sIntermediateResults + 32 * MAX_CHANNELS * warpID;
         half* intermediateResultsThread = sIntermediateResults + MAX_CHANNELS * threadIdx.x;

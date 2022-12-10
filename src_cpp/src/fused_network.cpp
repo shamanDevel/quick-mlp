@@ -8,6 +8,19 @@
 
 QUICKMLP_NAMESPACE_BEGIN
 
+/*
+ * For testing: overwrite certain settings that do not influence the algorithm,
+ * but how the kernels are launched.
+ * In other words: the block size. If negative, use the optimal choice
+ */
+namespace
+{
+    static constexpr int OVERWRITE_BLOCKSIZE_INFERENCE = -1;
+    static constexpr int OVERWRITE_BLOCKSIZE_FORWARD = -1;
+    static constexpr int OVERWRITE_BLOCKSIZE_BACKWARD = -1;
+    static constexpr int OVERWRITE_BLOCKSIZE_WEIGHT_UPDATE = -1;
+}
+
 static int fetchSharedMemory()
 {
     cudaDeviceProp props;
@@ -492,8 +505,12 @@ void FusedNetwork::inference(const Tensor& input, Tensor& output, CUstream strea
     }
 
     //LAUNCH KERNEL
-    int minGridSize = std::min(
-        CKL_DIV_UP(numel, inferenceKernel_->blockSize), 
+    const int blockSize =
+        OVERWRITE_BLOCKSIZE_INFERENCE > 0
+        ? OVERWRITE_BLOCKSIZE_INFERENCE
+        : inferenceKernel_->blockSize;
+    const int minGridSize = std::min(
+        CKL_DIV_UP(numel, blockSize),
         inferenceKernel_->fun.minGridSize());
     if (QuickMLP::Instance().isVerboseLogging()) {
         std::cout << "Launch " << inferenceKernel_->fun.name() << " with a block size of " << inferenceKernel_->blockSize << " and a shared memory size of " <<
@@ -504,7 +521,7 @@ void FusedNetwork::inference(const Tensor& input, Tensor& output, CUstream strea
     auto outputAcc = output.accessor<kernel::Tensor2RW<float>>();
     const half* networkParams = parametersInference_.dataPtr<half>();
     inferenceKernel_->fun.call(
-        minGridSize, inferenceKernel_->blockSize, inferenceKernel_->sharedMemorySize, stream,
+        minGridSize, blockSize, inferenceKernel_->sharedMemorySize, stream,
         numel, inputAcc, outputAcc, networkParams, nullptr);
 }
 
@@ -574,7 +591,7 @@ void FusedNetwork::compileForwardKernel()
         // prefix sum of the previous layers (perEntryForwardMemoryHalf) * numel32
         // + 32 * channelsOut * warpID
         callLayers << "forwardTmpMemory + (" << perEntryForwardMemoryHalf << "*numel32"
-            << " + 32*" << l.channelsOut << "*warpID) ";
+            << " + 32*" << l.channelsOut << "*globalWarpID) ";
         perEntryForwardMemoryHalf += l.channelsOut;
         //end function
         callLayers << ");\n";
@@ -669,8 +686,12 @@ void FusedNetwork::forward(const Tensor& input, Tensor& output, void* tmpMemory,
     }
 
     //LAUNCH KERNEL
+    const int blockSize =
+        OVERWRITE_BLOCKSIZE_FORWARD > 0
+        ? OVERWRITE_BLOCKSIZE_FORWARD
+        : forwardKernel_->blockSize;
     int minGridSize = std::min(
-        CKL_DIV_UP(numel, forwardKernel_->blockSize),
+        CKL_DIV_UP(numel, blockSize),
         forwardKernel_->fun.minGridSize());
     if (QuickMLP::Instance().isVerboseLogging()) {
         std::cout << "Launch " << forwardKernel_->fun.name() << " with a block size of " << forwardKernel_->blockSize << " and a shared memory size of " <<
@@ -682,7 +703,7 @@ void FusedNetwork::forward(const Tensor& input, Tensor& output, void* tmpMemory,
     const half* networkParams = parametersInference_.dataPtr<half>();
     half* tmpMemoryHalf = static_cast<half*>(tmpMemory);
     forwardKernel_->fun.call(
-        minGridSize, forwardKernel_->blockSize, forwardKernel_->sharedMemorySize, stream,
+        minGridSize, blockSize, forwardKernel_->sharedMemorySize, stream,
         numel, inputAcc, outputAcc, networkParams, tmpMemoryHalf);
 }
 
@@ -748,8 +769,8 @@ void FusedNetwork::compileBackwardKernel(int flags)
         else
             callLayers << "nullptr, ";
         callLayers << "adjIntermediateResultsWarp, \n" <<
-            "    forwardTmpMemory + (" << ali.offsetAdjOut << "*numel32" << " + 32*" << l.channelsOut << "*warpID), " <<
-            "adjointTmpMemory + (" << ali.offsetAdjOut << "*numel32" << " + 32*" << l.channelsOut << "*warpID) );\n";
+            "    forwardTmpMemory + (" << ali.offsetAdjOut << "*numel32" << " + 32*" << l.channelsOut << "*globalWarpID), " <<
+            "adjointTmpMemory + (" << ali.offsetAdjOut << "*numel32" << " + 32*" << l.channelsOut << "*globalWarpID) );\n";
         ////test
         //callLayers << "printLayer(" << i << ", index, adjIntermediateResultsThread, " << l.channelsIn << ");\n";
     }
@@ -999,8 +1020,12 @@ void FusedNetwork::adjoint(const Tensor& input, const Tensor& adjOutput, Adjoint
     }
 
     //LAUNCH KERNEL for the main network
-    int minGridSize = std::min(
-        CKL_DIV_UP(numel, ak.adjoint.blockSize),
+    const int blockSize =
+        OVERWRITE_BLOCKSIZE_BACKWARD > 0
+        ? OVERWRITE_BLOCKSIZE_BACKWARD
+        : ak.adjoint.blockSize;
+    const int minGridSize = std::min(
+        CKL_DIV_UP(numel, blockSize),
         ak.adjoint.fun.minGridSize());
     if (QuickMLP::Instance().isVerboseLogging()) {
         std::cout << "Launch " << ak.adjoint.fun.name() << " with a block size of " << ak.adjoint.blockSize << " and a shared memory size of " <<
@@ -1015,7 +1040,7 @@ void FusedNetwork::adjoint(const Tensor& input, const Tensor& adjOutput, Adjoint
     const half* forwardTmpMemory = static_cast<const half*>(tmpMemoryForward);
     const half* adjointTmpMemory = static_cast<const half*>(tmpMemoryAdjoint);
     ak.adjoint.fun.call(
-        minGridSize, ak.adjoint.blockSize, ak.adjoint.sharedMemorySize, stream,
+        minGridSize, blockSize, ak.adjoint.sharedMemorySize, stream,
         numel, inputAcc, adjOutputAcc, adjInputAcc, networkParams, forwardTmpMemory, adjointTmpMemory);
     if (useParallelStreams_) {
         CKL_SAFE_CALL(cudaEventRecord(adjointEvent_, stream));
@@ -1063,7 +1088,11 @@ void FusedNetwork::adjoint(const Tensor& input, const Tensor& adjOutput, Adjoint
                 layerStream = stream;
             }
 
-            int gridSize = 1; //one block only (non-atomic reduction)!
+            const int blockSizeWeight =
+                OVERWRITE_BLOCKSIZE_WEIGHT_UPDATE > 0
+                ? OVERWRITE_BLOCKSIZE_WEIGHT_UPDATE
+                : ck.blockSize;
+            const int gridSizeWeight = 1; //one block only (non-atomic reduction)!
             if (QuickMLP::Instance().isVerboseLogging()) {
                 std::cout << "Launch " << ck.fun.name() << ", layer " << layer << ", with a block size of " << ck.blockSize << 
                     " and a shared memory size of " << ck.sharedMemorySize << std::endl;
@@ -1071,13 +1100,13 @@ void FusedNetwork::adjoint(const Tensor& input, const Tensor& adjOutput, Adjoint
             if (ali.offsetIn>=0)
             {
                 const half* bIn = static_cast<const half*>(tmpMemoryForward) + static_cast<ptrdiff_t>(ali.offsetIn * numel32);
-                ck.fun.call(gridSize, ck.blockSize, ck.sharedMemorySize, layerStream,
+                ck.fun.call(gridSizeWeight, blockSizeWeight, ck.sharedMemorySize, layerStream,
                     numel, outAdjWeights, aIn, bIn);
             }
             else
             {
                 auto bIn = inputAcc;
-                ck.fun.call(gridSize, ck.blockSize, ck.sharedMemorySize, layerStream,
+                ck.fun.call(gridSizeWeight, blockSizeWeight, ck.sharedMemorySize, layerStream,
                     numel, outAdjWeights, aIn, bIn);
             }
             if (useParallelStreams_) {
