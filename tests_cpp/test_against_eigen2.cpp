@@ -75,7 +75,7 @@ TEMPLATE_TEST_CASE_SIG("test-against-eigen-2", "[eigen]",
 
     //create network
     QuickMLP::Instance().setCompileDebugMode(false);
-    QuickMLP::Instance().setVerboseLogging(false);
+    QuickMLP::Instance().setLogLevel(spdlog::level::info);
 
     auto network = std::make_shared<qmlp::FusedNetwork>(cfg, configFolder);
     SECTION("parallel")

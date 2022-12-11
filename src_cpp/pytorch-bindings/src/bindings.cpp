@@ -85,13 +85,9 @@ struct QuickMLPBindings : public torch::CustomClassHolder
     {
         return qmlp::QuickMLP::Instance().isCompileDebugMode();
     }
-    static void setVerboseLogging(bool enable)
+    static void setLogLevel(const std::string& level)
     {
-        qmlp::QuickMLP::Instance().setVerboseLogging(enable);
-    }
-    static bool isVerboseLogging()
-    {
-        return qmlp::QuickMLP::Instance().isVerboseLogging();
+        qmlp::QuickMLP::Instance().setLogLevel(level);
     }
 };
 
@@ -107,10 +103,8 @@ TORCH_LIBRARY(qmlp_cu, m)
             "If set to true, CUDA kernels are compiled in debug mode '-D'")
         .def_static("is_compile_debug_mode", &QuickMLPBindings::isCompileDebugMode,
             "Returns if debug compilation enabled for CUDA kernels or not")
-        .def_static("set_verbose_logging", &QuickMLPBindings::setVerboseLogging,
-            "If set to true, verbose logging messages are enabled")
-        .def_static("is_verbose_logging", &QuickMLPBindings::isVerboseLogging,
-            "Returns if debug logging is enabled")
+        .def_static("set_log_level", &QuickMLPBindings::setLogLevel,
+            "Sets the log level, one of 'off', 'debug', 'info', 'warn', 'error'")
     ;
 
     bindActivation(m);
@@ -118,7 +112,7 @@ TORCH_LIBRARY(qmlp_cu, m)
     bindNetwork(m);
     bindUtils(m);
 
-    std::cout << "QuickMLP bindings loaded" << std::endl;
+    qmlp::QuickMLP::Instance().getLogger()->info("QuickMLP library initialized");
     BindingsInitialized = true;
 }
 
@@ -130,7 +124,7 @@ void InitBindings()
     //Check it
     if (!BindingsInitialized)
     {
-        std::cerr << "QuickMLP bindings not loaded!!" << std::endl;
+        qmlp::QuickMLP::Instance().getLogger()->error("QuickMLP bindings not loaded!!");
         throw std::runtime_error("QuickMLP bindings not loaded!!");
     }
 }

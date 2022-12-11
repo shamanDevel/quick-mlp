@@ -23,7 +23,7 @@ def load_library():
             print(torch.classes.loaded_libraries)
 
             torch.classes.qmlp_cu.QuickMLP.set_compile_debug_mode(False)
-            torch.classes.qmlp_cu.QuickMLP.set_verbose_logging(False)
+            torch.classes.qmlp_cu.QuickMLP.set_log_level("info")
             load_library.library_loaded = True
 
             return

@@ -74,5 +74,5 @@ def test_optimize():
             cfg = f.read()
         parent = "."
         output = config
-        _optimize_image(cfg, parent, target_file, output, simulate=True)
+        _optimize_image(cfg, parent, target_file, output, simulate=False)
 

@@ -4,9 +4,41 @@
 #include <torch/types.h>
 #include <torch/script.h>
 #include <c10/cuda/CUDAStream.h>
+#include <sstream>
 
 #include <limits>
 #include "tensorlist_node.h"
+
+
+// Formatter specializations for debugging / logging
+template <> struct fmt::formatter<c10::ArrayRef<int64_t>> : fmt::formatter<std::string>
+{
+    template <typename FormatContext>
+    auto format(const c10::ArrayRef<int64_t>& c, FormatContext& ctx) const {
+        std::stringstream ss;
+        ss << c;
+        return fmt::formatter<std::string>::format(ss.str(), ctx);
+    }
+};
+template <> struct fmt::formatter<caffe2::TypeMeta> : fmt::formatter<std::string>
+{
+    template <typename FormatContext>
+    auto format(const caffe2::TypeMeta& c, FormatContext& ctx) const {
+        std::stringstream ss;
+        ss << c;
+        return fmt::formatter<std::string>::format(ss.str(), ctx);
+    }
+};
+template <> struct fmt::formatter<c10::Device> : fmt::formatter<std::string>
+{
+    template <typename FormatContext>
+    auto format(const c10::Device& c, FormatContext& ctx) const {
+        std::stringstream ss;
+        ss << c;
+        return fmt::formatter<std::string>::format(ss.str(), ctx);
+    }
+};
+
 
 static torch::Tensor createOutputTensor(const torch::Tensor& input, int channels)
 {
@@ -88,20 +120,23 @@ torch::Tensor NetworkBindings::forward(
     const torch::Tensor& input, const torch::Tensor& networkParameters,
     const std::vector<torch::Tensor>& encodingParameters)
 {
-    std::cout << "Input: shape=" << input.sizes() << ", dtype=" << input.dtype()
-        << ", device=" << input.device() << std::endl;
-    std::cout << "Network parameters: shape=" << networkParameters.sizes() <<
-        ", dtype=" << networkParameters.dtype()
-        << ", device=" << networkParameters.device() << std::endl;
+    auto logger = qmlp::QuickMLP::Instance().getLogger();
+    logger->debug("Input: shape={}, dtype={}, device={}",
+        input.sizes(), input.dtype(), input.device());
+    logger->debug("Network parameters: shape={}, dtype={}, device={}",
+        networkParameters.sizes(), networkParameters.dtype(), networkParameters.device());
     for (size_t i=0; i<encodingParameters.size(); ++i)
     {
         if (encodingParameters[i].defined())
-            std::cout << "Encoding parameter " << i <<
-            ": shape=" << encodingParameters[i].sizes() <<
-            ", dtype=" << encodingParameters[i].dtype()
-            << ", device=" << encodingParameters[i].device() << std::endl;
+        {
+            logger->debug("Encoding parameter {}: shape={}, dtype={}, device={}",
+                i, encodingParameters[i].sizes(), encodingParameters[i].dtype(),
+                encodingParameters[i].device());
+        }
         else
-            std::cout << "Encoding parameter " << i << " is undefined" << std::endl;
+        {
+            logger->debug("Encoding parameter {} is undefined", i);
+        }
     }
 
     TORCH_CHECK(input.defined());
@@ -117,7 +152,7 @@ torch::Tensor NetworkBindings::forward(
         if (t.defined() && t.requires_grad())
             adjointFlags |= QUICKMLP_NAMESPACE::FusedNetwork::AdjointMode::GRADIENTS_INPUT_ENCODINGS;
     }
-    std::cout << "Adjoint flags: " << int(adjointFlags) << std::endl;
+    logger->debug("Adjoint flags: {}", int(adjointFlags));
     //short-cut
     if (adjointFlags == 0)
     {
@@ -152,7 +187,7 @@ torch::Tensor NetworkBindings::forward(
 
     torch::autograd::tensor_list ret = TensorlistFunction::apply(
         vars, 
-        [this, adjointFlags, parameterIndexIntoVars, encodingIndexIntoVars, originalNetworkParamterDtype]
+        [this, logger, adjointFlags, parameterIndexIntoVars, encodingIndexIntoVars, originalNetworkParamterDtype]
         (TensorlistAutogradContext* ctx, torch::autograd::variable_list args) -> torch::autograd::variable_list
         {
             //forward
@@ -171,7 +206,7 @@ torch::Tensor NetworkBindings::forward(
             long long forwardMemorySize = this->n_->forwardMemory(
                 input.size(0),
                 adjointFlags);
-            std::cout << "Allocate forward memory with " << forwardMemorySize << " bytes" << std::endl;
+            logger->debug("Allocate forward memory with {} bytes", forwardMemorySize);
             torch::Tensor tmpForward = torch::empty(
                 { forwardMemorySize },
                 at::TensorOptions().dtype(c10::kByte).device(input.device()));
@@ -183,10 +218,10 @@ torch::Tensor NetworkBindings::forward(
 
             std::lock_guard lock(this->mutex_);
 
-            std::cout << "Set network and encoding parameters" << std::endl;
+            logger->debug("Set network and encoding parameters");
             this->setNetworkParameters(networkParameters, encodingParameters);
 
-            std::cout << "Launch forward kernel" << std::endl;
+            logger->debug("Launch forward kernel");
             this->n_->forward(
                 QUICKMLP_NAMESPACE::wrap(input),
                 outputWrapped,
@@ -197,7 +232,7 @@ torch::Tensor NetworkBindings::forward(
 
             return { output };
         },
-        [this, adjointFlags, parameterIndexIntoVars, encodingIndexIntoVars, originalNetworkParamterDtype]
+        [this, logger, adjointFlags, parameterIndexIntoVars, encodingIndexIntoVars, originalNetworkParamterDtype]
         (TensorlistAutogradContext* ctx, torch::autograd::variable_list grad_outputs) -> torch::autograd::variable_list
         {
             //adjoint

@@ -99,6 +99,9 @@ find_package(CUDAToolkit REQUIRED)
 add_subdirectory(third-party/cuda-kernel-loader)
 add_subdirectory(third-party/json)
 add_subdirectory(third-party/magic_enum)
+if(NOT TARGET spdlog::spdlog)
+    add_subdirectory(third-party/spdlog)
+endif()
 
 # currently not needed
 # set(CUTLASS_ENABLE_HEADERS_ONLY ON CACHE BOOL "Enable only the header library")
@@ -244,6 +247,7 @@ if(NOT TARGET qmlp-library)
         CUDA::cudart 
         ckl::ckl 
         nlohmann_json::nlohmann_json
+        spdlog::spdlog
     PRIVATE
         #nvidia::cutlass::cutlass 
         magic_enum::magic_enum)

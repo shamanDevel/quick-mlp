@@ -79,10 +79,8 @@ EncodingHashGrid::EncodingHashGrid(int start_channel, int dimension, int num_lev
                 numParameters_, resolution, 0, false
             });
             numParameters_ += static_cast<int>(requiredCells) * num_features_per_level;
-            if (QuickMLP::Instance().isVerboseLogging())
-            {
-                std::cout << "HashGrid layer " << l << " is dense. Resolution=" << resolution << std::endl;
-            }
+            QuickMLP::Instance().getLogger()->debug("HashGrid layer {} is dense. Resolution={}",
+                l, resolution);
         }
         else
         {
@@ -91,10 +89,8 @@ EncodingHashGrid::EncodingHashGrid(int start_channel, int dimension, int num_lev
                 numParameters_, resolution, hashmapSize_, true
                 });
             numParameters_ += hashmapSize_ * num_features_per_level;
-            if (QuickMLP::Instance().isVerboseLogging())
-            {
-                std::cout << "HashGrid layer " << l << " is sparse and will be hashed. Resolution=" << resolution << ", hashmap size=" << hashmapSize_ << std::endl;
-            }
+            QuickMLP::Instance().getLogger()->debug("HashGrid layer {} is sparse and will be hashed. Resolution={}, hashmap size={}",
+                l, resolution, hashmapSize_);
         }
     }
 }

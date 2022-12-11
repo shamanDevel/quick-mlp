@@ -30,8 +30,9 @@ static int fetchSharedMemory()
         throw configuration_error("The warp size has changed, it is no longer %d but %d. This invalidates all algorithms!",
             FusedNetwork::WARP_SIZE, props.warpSize);
     }
-    std::cout << "Available shared memory on the current device in bytes: " <<
-        props.sharedMemPerBlock << std::endl;
+    QuickMLP::Instance().getLogger()->debug(
+        "Available shared memory on the current device in bytes:  {}",
+        props.sharedMemPerBlock);
     return static_cast<int>(props.sharedMemPerBlock);
 }
 const int FusedNetwork::MAX_SHARED_MEMORY_BYTES = fetchSharedMemory();
@@ -132,22 +133,22 @@ FusedNetwork::FusedNetwork(const nlohmann::json& cfg, const std::filesystem::pat
         {
             networkInputPadding_ = paddedIn - currentIn;
             layers_[i].channelsIn = paddedIn;
-            std::cout << "Warning: need to pad the network input channels from the encodings (" <<
-                currentIn << " channels) to the next multiple of the matrix size (" <<
-                MATRIX_SIZE << "), leading to a new size of " << paddedIn << ". ";
-            std::cout << "These extra channels are padded with zeros and are thus wasted. " <<
-                "Consider increasing the input encoding." << std::endl;
+            QuickMLP::Instance().getLogger()->warn(
+                "Warning: need to pad the network input channels from the encodings ({} channels)"
+                " to the next multiple of the matrix size ({}). "
+                "These extra channels are padded with zeros and are thus wasted. Consider increasing the input encoding.",
+                currentIn, paddedIn);
         } else
         {
             int padding = paddedIn - currentIn;
             layers_[i].channelsIn = paddedIn;
             layers_[i - 1].channelsOut = paddedIn;
-            std::cout << "Warning: The hidden channels between layer " << (i - 1) << " and " <<
-                i << " is currently specified to be " << currentIn << " channels wide." << std::endl;
-            std::cout << "  Matrix multiplications, however, are always performed in multiples of " <<
-                MATRIX_SIZE << " channels." << std::endl;
-            std::cout << "  The network has been automatically increased in size to fit " <<
-                paddedIn << " channels. Consider updating the network specification to reflect this." << std::endl;
+            QuickMLP::Instance().getLogger()->warn(
+                "Warning: The hidden channels between layer {} and {} is currently specified to be "
+                "{} channels wide. Matrix multiplications, however, are always performed in multiples of {} "
+                "channels. The network has been automatically increased in size to fit {} channels. "
+                "Consider updating the network specification to reflect this.",
+                i - 1, i, currentIn, MATRIX_SIZE, paddedIn);
         }
     }
     //TODO: for now, also pad the last layer
@@ -158,9 +159,10 @@ FusedNetwork::FusedNetwork(const nlohmann::json& cfg, const std::filesystem::pat
         if (currentOut != paddedOut)
         {
             layers_.rbegin()->channelsOut = paddedOut;
-            std::cout << "Warning: the last layer's output is not a multiple of " << MATRIX_SIZE <<
-                ", but rather "  << currentOut << ", hence padding required. " <<
-                "In the future, I will add special handling for the last layer." << std::endl;
+            QuickMLP::Instance().getLogger()->warn(
+                "Warning: the last layer's output is not a multiple of {}, "
+                "but rather {}, hence padding required. In the future, I will add special handling for the last layer.",
+                MATRIX_SIZE, currentOut);
         }
     }
 
@@ -451,10 +453,10 @@ void FusedNetwork::compileInferenceKernel()
     {
         blockSize = MAX_SHARED_MEMORY_BYTES / (maxChannels * sizeof(half));
         blockSize = (blockSize / 32) * 32; //round up to multiple of the warp size
-        if (QuickMLP::Instance().isVerboseLogging()) {
-            std::cout << "It would be possible to fit more threads into each block in terms of register usage, but the shared memory is not enough. " <<
-                "Reducing the block size from " << bestBlockSize << " down to " << blockSize << std::endl;
-        }
+        QuickMLP::Instance().getLogger()->debug(
+            "It would be possible to fit more threads into each block in terms of register usage, but the shared memory is not enough. "
+            "Reducing the block size from {} down to {}.",
+            bestBlockSize, blockSize);
         sharedMemorySize = blockSize * maxChannels * sizeof(half);
     }
 
@@ -512,10 +514,9 @@ void FusedNetwork::inference(const Tensor& input, Tensor& output, CUstream strea
     const int minGridSize = std::min(
         CKL_DIV_UP(numel, blockSize),
         inferenceKernel_->fun.minGridSize());
-    if (QuickMLP::Instance().isVerboseLogging()) {
-        std::cout << "Launch " << inferenceKernel_->fun.name() << " with a block size of " << inferenceKernel_->blockSize << " and a shared memory size of " <<
-            inferenceKernel_->sharedMemorySize << std::endl;
-    }
+    QuickMLP::Instance().getLogger()->debug(
+        "Launch {} with a block size of {} and a shared memory size of {}",
+        inferenceKernel_->fun.name(), inferenceKernel_->blockSize, inferenceKernel_->sharedMemorySize);
     //launch
     auto inputAcc = input.accessor<kernel::Tensor2Read<float>>();
     auto outputAcc = output.accessor<kernel::Tensor2RW<float>>();
@@ -614,10 +615,10 @@ void FusedNetwork::compileForwardKernel()
     {
         blockSize = MAX_SHARED_MEMORY_BYTES / (maxChannels * sizeof(half));
         blockSize = (blockSize / 32) * 32; //round up to multiple of the warp size
-        if (QuickMLP::Instance().isVerboseLogging()) {
-            std::cout << "It would be possible to fit more threads into each block in terms of register usage, but the shared memory is not enough. " <<
-                "Reducing the block size from " << bestBlockSize << " down to " << blockSize << std::endl;
-        }
+        QuickMLP::Instance().getLogger()->debug(
+            "It would be possible to fit more threads into each block in terms of register usage, but the shared memory is not enough. "
+            "Reducing the block size from {} down to {}.",
+            bestBlockSize, blockSize);
         sharedMemorySize = blockSize * maxChannels * sizeof(half);
     }
 
@@ -693,10 +694,9 @@ void FusedNetwork::forward(const Tensor& input, Tensor& output, void* tmpMemory,
     int minGridSize = std::min(
         CKL_DIV_UP(numel, blockSize),
         forwardKernel_->fun.minGridSize());
-    if (QuickMLP::Instance().isVerboseLogging()) {
-        std::cout << "Launch " << forwardKernel_->fun.name() << " with a block size of " << forwardKernel_->blockSize << " and a shared memory size of " <<
-            forwardKernel_->sharedMemorySize << std::endl;
-    }
+    QuickMLP::Instance().getLogger()->debug(
+        "Launch {} with a block size of {} and a shared memory size of {}",
+        forwardKernel_->fun.name(), forwardKernel_->blockSize, forwardKernel_->sharedMemorySize);
     //launch
     auto inputAcc = input.accessor<kernel::Tensor2Read<float>>();
     auto outputAcc = output.accessor<kernel::Tensor2RW<float>>();
@@ -814,10 +814,10 @@ void FusedNetwork::compileBackwardKernel(int flags)
     {
         blockSize = MAX_SHARED_MEMORY_BYTES / (maxChannels * sizeof(half));
         blockSize = (blockSize / 32) * 32; //round down to multiple of the warp size
-        if (QuickMLP::Instance().isVerboseLogging()) {
-            std::cout << "It would be possible to fit more threads into each block in terms of register usage, but the shared memory is not enough. " <<
-                "Reducing the block size from " << bestBlockSize << " down to " << blockSize << std::endl;
-        }
+        QuickMLP::Instance().getLogger()->debug(
+            "It would be possible to fit more threads into each block in terms of register usage, but the shared memory is not enough. "
+            "Reducing the block size from {} down to {}.",
+            bestBlockSize, blockSize);
         sharedMemorySize = blockSize * maxChannels * sizeof(half);
     }
 
@@ -932,10 +932,10 @@ void FusedNetwork::compileBackwardKernel(int flags)
                 {
                     throw configuration_error("Layer %d too large for block-wise weight update!", layer);
                 }
-                if (QuickMLP::Instance().isVerboseLogging()) {
-                    std::cout << "It would be possible to fit more threads into each block in terms of register usage, but the shared memory is not enough. " <<
-                        "Reducing the block size from " << bestBlockSize << " down to " << blockSize << std::endl;
-                }
+                QuickMLP::Instance().getLogger()->debug(
+                    "It would be possible to fit more threads into each block in terms of register usage, but the shared memory is not enough. "
+                    "Reducing the block size from {} down to {}.",
+                    bestBlockSize, blockSize);
                 sharedMemorySize = numWarps * sharedMemoryBytesPerWarp;
             }
 
@@ -1027,10 +1027,9 @@ void FusedNetwork::adjoint(const Tensor& input, const Tensor& adjOutput, Adjoint
     const int minGridSize = std::min(
         CKL_DIV_UP(numel, blockSize),
         ak.adjoint.fun.minGridSize());
-    if (QuickMLP::Instance().isVerboseLogging()) {
-        std::cout << "Launch " << ak.adjoint.fun.name() << " with a block size of " << ak.adjoint.blockSize << " and a shared memory size of " <<
-            ak.adjoint.sharedMemorySize << std::endl;
-    }
+    QuickMLP::Instance().getLogger()->debug(
+        "Launch {} with a block size of {} and a shared memory size of {}",
+        ak.adjoint.fun.name(), ak.adjoint.blockSize, ak.adjoint.sharedMemorySize);
     //launch
     auto inputAcc = input.accessor<kernel::Tensor2Read<float>>();
     auto adjOutputAcc = adjOutput.accessor<kernel::Tensor2Read<float>>();
@@ -1093,10 +1092,9 @@ void FusedNetwork::adjoint(const Tensor& input, const Tensor& adjOutput, Adjoint
                 ? OVERWRITE_BLOCKSIZE_WEIGHT_UPDATE
                 : ck.blockSize;
             const int gridSizeWeight = 1; //one block only (non-atomic reduction)!
-            if (QuickMLP::Instance().isVerboseLogging()) {
-                std::cout << "Launch " << ck.fun.name() << ", layer " << layer << ", with a block size of " << ck.blockSize << 
-                    " and a shared memory size of " << ck.sharedMemorySize << std::endl;
-            }
+            QuickMLP::Instance().getLogger()->debug(
+                "Launch {}, layer {}, with a block size of {} and a shared memory size of {}",
+                ck.fun.name(), layer, ck.blockSize, ck.sharedMemorySize);
             if (ali.offsetIn>=0)
             {
                 const half* bIn = static_cast<const half*>(tmpMemoryForward) + static_cast<ptrdiff_t>(ali.offsetIn * numel32);

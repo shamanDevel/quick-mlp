@@ -29,7 +29,8 @@ def get_files(base, filter=".*"):
 
 _qmlp_files = get_files(os.path.join(_root, 'src_cpp/src'))
 _binding_files = get_files(os.path.join(_root, 'src_cpp/pytorch-bindings'))
-_thirdparty_files = get_files(os.path.join(_root, 'third-party/cuda-kernel-loader/src'))
+_thirdparty_files = get_files(os.path.join(_root, 'third-party/cuda-kernel-loader/src')) + \
+                    get_files(os.path.join(_root, 'third-party/cuda-kernel-loader/third-party/spdlog/src'))
 
 print("qmlp files:", _qmlp_files)
 print("binding files:", _binding_files)
@@ -38,6 +39,7 @@ print("third party files:", _thirdparty_files)
 _include_dirs = [
     '%s/src_cpp/include'%_root,
     '%s/third-party/cuda-kernel-loader/include'%_root,
+    '%s/third-party/cuda-kernel-loader/third-party/spdlog/include'%_root,
     '%s/third-party/json/single_include'%_root,
     '%s/third-party/tinyformat'%_root,
     '%s/third-party/magic_enum/include'%_root,
@@ -53,6 +55,17 @@ _libraries = [
 _common_args = [
     '/std:c++17' if os.name=='nt' else '-std=c++17',
     '-DCKL_NVCC_INCLUDE_DIR=%s'%_join_cuda_home('include').replace('\\','/'),
+    '-DSPDLOG_COMPILED_LIB',
+    #'-DSPDLOG_WCHAR_TO_UTF8_SUPPORT'
+    #'-DSPDLOG_WCHAR_FILENAMES',
+    #'-DSPDLOG_NO_EXCEPTIONS',
+    #'-DSPDLOG_CLOCK_COARSE',
+    #'-DSPDLOG_PREVENT_CHILD_FD',
+    #'-DSPDLOG_NO_THREAD_ID',
+    #'-DSPDLOG_NO_TLS',
+    #'-DSPDLOG_NO_ATOMIC_LEVELS',
+    #'-DSPDLOG_DISABLE_DEFAULT_LOGGER',
+    #'-DSPDLOG_USE_STD_FORMAT',
 ]
 
 setup(

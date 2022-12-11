@@ -1,9 +1,12 @@
 #pragma once
 
 #include "common.h"
+#include <spdlog/spdlog.h>
 #include <ckl/kernel_loader.h>
 
 QUICKMLP_NAMESPACE_BEGIN
+
+typedef std::shared_ptr<spdlog::logger> logger_t;
 
 /**
  * The entry class into quick-mlp (singleton)
@@ -11,9 +14,9 @@ QUICKMLP_NAMESPACE_BEGIN
 class QuickMLP : public NonAssignable
 {
 private:
-    ckl::KernelLoader_ptr kl_;
+    const logger_t logger_;
+    const ckl::KernelLoader_ptr kl_;
     bool enableCompileDebugMode_;
-    bool enableVerboseLogging_;
 
     QuickMLP();
 
@@ -22,6 +25,31 @@ public:
      * Returns the global quick-mlp instance
      */
     static QuickMLP& Instance();
+
+    /**
+     * Returns the logger instance used to report compile logs (debug) or errors
+     */
+    [[nodiscard]] logger_t getLogger() const;
+
+    /**
+     * Sets the log level.
+     * The kernel loader uses the following levels:
+     *  - debug: verbose info on the kernel names and source code
+     *  - info: a new kernel is compiled
+     *  - error: compilation errors
+     */
+    void setLogLevel(spdlog::level::level_enum level);
+
+    /**
+     * Sets the log level by name
+     * The kernel loader uses the following levels:
+     *  - debug: verbose info on the kernel names and source code
+     *  - info: a new kernel is compiled
+     *  - error: compilation errors
+     *
+     * \param levelName the name of the level: "off", "debug", "info", "warn", "error"
+     */
+    void setLogLevel(const std::string& levelName);
 
     /**
      * The kernel loader used to generate the cuda kernels.
@@ -39,13 +67,6 @@ public:
 
     [[nodiscard]] bool isCompileDebugMode() const { return enableCompileDebugMode_; }
 
-    /**
-     * Enable (true) or disable (false) verbose logging.
-     * This logs the sources of all compiled kernels.
-     */
-    void setVerboseLogging(bool enable);
-
-    [[nodiscard]] bool isVerboseLogging() const { return enableVerboseLogging_; }
 
     /**
      * Returns the compile flags for CKL.
