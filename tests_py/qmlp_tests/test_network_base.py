@@ -6,7 +6,6 @@ import torch.nn.functional
 import torch.autograd
 import torch.nn.init
 import torch.optim
-import imageio
 from torchtyping import TensorType
 import json
 
@@ -29,6 +28,9 @@ class bcolors:
 
 def _print_tensors(t1: np.ndarray, t2: np.ndarray, diff: np.ndarray,
                    _prefix='', _suffix='\n'):
+    if t1.size > 1<<14:
+        print("Array too big, can't print")
+        return
     if len(t1.shape) == 2:
         print(_prefix, "[", sep="", end="")
         for i in range(t1.shape[0]):
@@ -98,7 +100,7 @@ def _test_network(cfg: str):
     network_torch.to(device)
 
     # number of elements to test
-    Nx = [16, 32, 128, 513]
+    Nx = [16, 32, 128, 513, 48621]
     for N in Nx:
         print(f"Run with N={N} input elements")
         input = torch.randn((N, n_in), device=device, dtype=torch.float32)
@@ -174,3 +176,81 @@ def test_network_single_layer():
         print(cfg)
         _test_network(cfg)
 
+
+def test_network_two_layers():
+    channels = [16, 32, 48]
+    hidden_channels = [16, 32, 48]
+    activations_hidden = ["celu", "identity"]
+    activations_last = ["celu", "identity"]
+    for c_in, c_out, c_hidden, activation_hidden, activation_last in itertools.product(
+            channels, channels, hidden_channels, activations_hidden, activations_last):
+        cfg = f"""{{
+    "num_inputs": {c_in},
+    "num_outputs": {c_out},
+    "activation_specification": [
+        "qmlp/builtin-activations.json"
+      ],
+    "encodings": [
+        {{
+          "id": "Identity",
+          "start_in": 0,
+          "n_in": {c_in}
+        }}
+      ],
+    "network": [
+        {{
+          "n_out": {c_hidden},
+          "bias": false,
+          "activation": "{activation_hidden}"
+        }},
+        {{
+          "n_out": {c_out},
+          "bias": false,
+          "activation": "{activation_last}"
+        }}
+      ]
+    }}"""
+        print(cfg)
+        _test_network(cfg)
+
+
+def test_network_three_layers():
+    channels = [16, 32, 48]
+    hidden_channels = [16, 32, 48]
+    activations_hidden = ["celu", "identity"]
+    activations_last = ["celu", "identity"]
+    for c_in, c_out, c_hidden, activation_hidden, activation_last in itertools.product(
+            channels, channels, hidden_channels, activations_hidden, activations_last):
+        cfg = f"""{{
+    "num_inputs": {c_in},
+    "num_outputs": {c_out},
+    "activation_specification": [
+        "qmlp/builtin-activations.json"
+      ],
+    "encodings": [
+        {{
+          "id": "Identity",
+          "start_in": 0,
+          "n_in": {c_in}
+        }}
+      ],
+    "network": [
+        {{
+          "n_out": {c_hidden},
+          "bias": false,
+          "activation": "{activation_hidden}"
+        }},
+        {{
+          "n_out": {c_hidden},
+          "bias": false,
+          "activation": "{activation_hidden}"
+        }},
+        {{
+          "n_out": {c_out},
+          "bias": false,
+          "activation": "{activation_last}"
+        }}
+      ]
+    }}"""
+        print(cfg)
+        _test_network(cfg)
