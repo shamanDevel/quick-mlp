@@ -1,6 +1,7 @@
 import torch
 from torchtyping import TensorType
 import json
+import warnings
 
 from .import_library import load_library
 from .encoding import FusedEncoding
@@ -14,7 +15,7 @@ class FusedNetwork(torch.nn.Module):
     linear layers and non-linear activations.
     """
 
-    def __init__(self, cfg: str, parent: str = "."):
+    def __init__(self, cfg: str, parent: str = ".", weight_dtype=torch.float16):
         """
         Constructs a new fused network from the given json configuration.
         The second parameter denotes the parent folder of the config, from this folder,
@@ -33,6 +34,7 @@ class FusedNetwork(torch.nn.Module):
 
         weights = self._network.create_inference_parameters()
         self._network.initialize_inference_parameters(weights)
+        weights = weights.to(weight_dtype)
         weights.requires_grad_(True)
         self.weights = torch.nn.Parameter(weights)
         print("Number of trainable network parameters:", weights.shape)
@@ -142,6 +144,11 @@ class FusedNetwork(torch.nn.Module):
         assert len(x.shape)==2
         assert x.shape[1] == self.channels_in()
 
+        if self.weights.requires_grad and self.weights.dtype == torch.float16:
+            warnings.warn("Attempt to train network with 16-bit weights.\n"
+                          "While the gradients can be computed, the resulting grad-tensor will also have 16-bit precision and optimizers (e.g. Adam) can't handle those.\n"
+                          "Consider enabling 32-bit weights by setting 'weight_dtype=torch.float32' in the constructor.")
+
         return self._network.forward(x, self.weights, []) #list(self.encoding_parameters))
 
     def __repr__(self):
@@ -156,7 +163,7 @@ class SimulatedNetwork(torch.nn.Module):
     Simulates the fused network in regular PyTorch.
     """
 
-    def __init__(self, cfg: str):
+    def __init__(self, cfg: str, weight_dtype=torch.float16):
         """
         Constructs a network module that simulates the fused network.
         :param cfg:
@@ -165,6 +172,7 @@ class SimulatedNetwork(torch.nn.Module):
         cfg = json.loads(cfg)
         self._channels_in = cfg['num_inputs']
         self._channels_out = cfg['num_outputs']
+        self._weight_dtype = weight_dtype
 
         # verify encoding, only 'Identity' allowed in simulation mode
         if len(cfg['encodings']) == 0:
@@ -186,7 +194,7 @@ class SimulatedNetwork(torch.nn.Module):
             n_out = layer['n_out']
             bias = layer['bias']
             activation = FusedActivation.get_activation(layer['activation'])
-            layers.append(torch.nn.Linear(n_in, n_out, bias=bias, dtype=torch.float16))
+            layers.append(torch.nn.Linear(n_in, n_out, bias=bias, dtype=weight_dtype))
             layers.append(activation)
             n_in = n_out
             self._has_bias.append(bias)
@@ -231,7 +239,7 @@ class SimulatedNetwork(torch.nn.Module):
 
     def forward(self, x: TensorType["batch", "in-channels", float]
                 ) -> TensorType["batch", "out-channels", float]:
-        return self.layers(x.to(torch.float16)).to(torch.float32)
+        return self.layers(x.to(self._weight_dtype)).to(self._weight_dtype)
 
 
 def copy_torch_to_fused(dst: FusedNetwork, src: SimulatedNetwork, grad: bool = False):

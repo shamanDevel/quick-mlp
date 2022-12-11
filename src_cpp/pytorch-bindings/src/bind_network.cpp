@@ -69,7 +69,10 @@ torch::Tensor NetworkBindings::inference(const torch::Tensor& input,
     TORCH_CHECK(input.defined());
     torch::Tensor output = createOutputTensor(input, n_->channelsOut());
 
-    setNetworkParameters(networkParameters, encodingParameters);
+    auto np = networkParameters.dtype() == c10::kHalf
+        ? networkParameters
+        : networkParameters.to(c10::kHalf);
+    setNetworkParameters(np, encodingParameters);
 
     CUstream stream = c10::cuda::getCurrentCUDAStream();
     auto outputWrapped = QUICKMLP_NAMESPACE::wrap(output);
@@ -128,10 +131,15 @@ torch::Tensor NetworkBindings::forward(
     int parameterIndexIntoVars = -1;
     std::vector<int> encodingIndexIntoVars(numEncodings(), -1);
     vars.push_back(input);
+    caffe2::TypeMeta originalNetworkParamterDtype;
     if (networkParameters.defined())
     {
+        originalNetworkParamterDtype = networkParameters.dtype();
         parameterIndexIntoVars = vars.size();
-        vars.push_back(networkParameters);
+        auto np = networkParameters.dtype() == c10::kHalf
+            ? networkParameters
+            : networkParameters.to(c10::kHalf);
+        vars.push_back(np);
     }
     for (size_t i=0; i<encodingParameters.size(); ++i)
     {
@@ -144,7 +152,7 @@ torch::Tensor NetworkBindings::forward(
 
     torch::autograd::tensor_list ret = TensorlistFunction::apply(
         vars, 
-        [this, adjointFlags, parameterIndexIntoVars, encodingIndexIntoVars]
+        [this, adjointFlags, parameterIndexIntoVars, encodingIndexIntoVars, originalNetworkParamterDtype]
         (TensorlistAutogradContext* ctx, torch::autograd::variable_list args) -> torch::autograd::variable_list
         {
             //forward
@@ -174,8 +182,10 @@ torch::Tensor NetworkBindings::forward(
             auto outputWrapped = QUICKMLP_NAMESPACE::wrap(output);
 
             std::lock_guard lock(this->mutex_);
+
             std::cout << "Set network and encoding parameters" << std::endl;
             this->setNetworkParameters(networkParameters, encodingParameters);
+
             std::cout << "Launch forward kernel" << std::endl;
             this->n_->forward(
                 QUICKMLP_NAMESPACE::wrap(input),
@@ -187,7 +197,7 @@ torch::Tensor NetworkBindings::forward(
 
             return { output };
         },
-        [this, adjointFlags, parameterIndexIntoVars, encodingIndexIntoVars]
+        [this, adjointFlags, parameterIndexIntoVars, encodingIndexIntoVars, originalNetworkParamterDtype]
         (TensorlistAutogradContext* ctx, torch::autograd::variable_list grad_outputs) -> torch::autograd::variable_list
         {
             //adjoint
@@ -263,7 +273,7 @@ torch::Tensor NetworkBindings::forward(
             torch::autograd::variable_list adjInputs(saved.size());
             adjInputs[0] = adjInput;
             if (parameterIndexIntoVars >= 0)
-                adjInputs[parameterIndexIntoVars] = adjNetworkParameters;
+                adjInputs[parameterIndexIntoVars] = adjNetworkParameters.to(originalNetworkParamterDtype);
             for (int i = 0; i < m; ++i) {
                 if (encodingIndexIntoVars[i] >= 0)
                     adjInputs[encodingIndexIntoVars[i]] = adjEncodingParameters[i];

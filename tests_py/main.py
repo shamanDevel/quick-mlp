@@ -15,8 +15,11 @@ if __name__ == '__main__':
     #test_densegrid_1d()
     #test_densegrid_2d()
 
-    from qmlp_tests.test_network_base import test_network_single_layer, test_network_two_layers, test_network_three_layers
-    test_network_single_layer()
-    test_network_two_layers()
-    test_network_three_layers()
+    #from qmlp_tests.test_network_base import test_network_single_layer, test_network_two_layers, test_network_three_layers
+    #test_network_single_layer()
+    #test_network_two_layers()
+    #test_network_three_layers()
+
+    from qmlp_tests.test_network_image import test_optimize
+    test_optimize()
 

@@ -49,3 +49,4 @@ pybind11Targets.cmake
 /.idea/
 *.kernel
 .idea/
+/output/

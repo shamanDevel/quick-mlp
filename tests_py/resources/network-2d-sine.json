@@ -13,9 +13,19 @@
   ],
   "network": [
     {
-      "n_out": 32,
+      "n_out": 64,
       "bias": false,
-      "activation": "celu"
+      "activation": "sine"
+    },
+    {
+      "n_out": 64,
+      "bias": false,
+      "activation": "sine"
+    },
+    {
+      "n_out": 64,
+      "bias": false,
+      "activation": "sine"
     },
     {
       "n_out": 16,
