@@ -51,7 +51,7 @@ class FusedEncoding(torch.nn.Module):
         ...
 
     @overload
-    def __init__(self, impl: torch.classes.qmlp.Encoding):
+    def __init__(self, impl: torch.classes.qmlp_cu.Encoding):
         """
         Wraps the encoding directly.
         This is used by the fused network
@@ -62,8 +62,8 @@ class FusedEncoding(torch.nn.Module):
         super().__init__()
         if isinstance(cfg_or_impl, str):
             self._cfg = cfg_or_impl
-            self._encoding = torch.classes.qmlp.Encoding(cfg_or_impl)
-        elif isinstance(cfg_or_impl, torch.classes.qmlp.Encoding):
+            self._encoding = torch.classes.qmlp_cu.Encoding(cfg_or_impl)
+        elif isinstance(cfg_or_impl, torch.classes.qmlp_cu.Encoding):
             self._cfg = cfg_or_impl.to_json()
             self._encoding = cfg_or_impl
         self._max_input_channel: int = self._encoding.max_input_channel()

@@ -100,7 +100,7 @@ namespace
     bool BindingsInitialized = false;
 }
 
-TORCH_LIBRARY(qmlp, m)
+TORCH_LIBRARY(qmlp_cu, m)
 {
     m.class_<QuickMLPBindings>("QuickMLP")
         .def_static("set_compile_debug_mode", &QuickMLPBindings::setCompileDebugMode,
@@ -136,3 +136,17 @@ void InitBindings()
 }
 
 QUICKMLP_NAMESPACE_END
+
+
+#if defined(WIN32) || defined(_WIN32) || defined(__WIN32__) || defined(__NT__)
+
+/**
+ * On windows built, PyInit_ ## TORCH_EXTENSION_NAME is somehow always exported.
+ * But we do not actually provide it as this is not a direct importable python extension.
+ * It is loaded instead through PyTorch.
+ * Hence -> define dummy
+ */
+
+__declspec(dllexport) void PyInit_qmlp_cu() {}
+
+#endif

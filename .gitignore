@@ -48,3 +48,4 @@ pybind11Targets.cmake
 /pytorch-tests/output
 /.idea/
 *.kernel
+.idea/

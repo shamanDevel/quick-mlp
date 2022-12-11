@@ -27,7 +27,7 @@ class FusedNetwork(torch.nn.Module):
         self._cfg = cfg
         self._parent = parent
 
-        self._network = torch.classes.qmlp.Network(cfg, parent)
+        self._network = torch.classes.qmlp_cu.Network(cfg, parent)
         self._num_output_channels: int = self._network.channels_out()
         self._num_layers: int = self._network.num_layers()
 
@@ -44,7 +44,7 @@ class FusedNetwork(torch.nn.Module):
         encoding_parameters = [None] * self._num_encodings
         self._encodings = [None] * self._num_encodings
         for i in range(self._num_encodings):
-            e: torch.classes.qmlp.Encoding = self._network.encoding(i)
+            e: torch.classes.qmlp_cu.Encoding = self._network.encoding(i)
             print("Encoding at index i:", e.to_json())
             self._encodings[i] = e
             self._max_input_channel = max(self._max_input_channel, e.max_input_channel())

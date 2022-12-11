@@ -21,5 +21,5 @@ def pullpush(mask: TensorType["batch", "height", "width", float],
     :param data: the data of shape (Batch, Channels, Height, Width)
     :output: the inpainted data of shape (Batch, Channels, Height, Width)
     """
-    impl = torch.classes.qmlp.utils.pullpush
+    impl = torch.classes.qmlp_cu.utils.pullpush
     return impl(mask, data)

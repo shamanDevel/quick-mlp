@@ -58,7 +58,7 @@ class FusedActivation(torch.nn.Module):
         """
         super().__init__()
         self._cfg = cfg
-        self._activation = torch.classes.qmlp.Activation(cfg)
+        self._activation = torch.classes.qmlp_cu.Activation(cfg)
 
     def forward(self, input: TensorType["batch", "channels", torch.half]
                 ) -> TensorType["batch", "channels", torch.half]:
