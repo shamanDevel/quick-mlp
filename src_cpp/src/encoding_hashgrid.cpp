@@ -2,6 +2,7 @@
 
 #include <tinyformat.h>
 #include <magic_enum.hpp>
+#include <spdlog/spdlog.h>
 #include <qmlp/kernels/encoding_hashgrid_config.cuh>
 #include <qmlp/kernels/loops.cuh>
 #include <qmlp/qmlp.h>
