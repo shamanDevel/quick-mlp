@@ -97,7 +97,10 @@ find_package(CUDAToolkit REQUIRED)
 
 # Third-party
 add_subdirectory(third-party/cuda-kernel-loader)
-add_subdirectory(third-party/json)
+if (NOT nlohmann_json_FOUND AND NOT NLOHMANN_JSON_FOUND)
+  # Check for compatibility with tiny-cuda-nn whether the JSON library was already found elsewhere.
+  add_subdirectory(third-party/json)
+endif()
 add_subdirectory(third-party/magic_enum)
 if(NOT TARGET spdlog::spdlog)
     add_subdirectory(third-party/spdlog)

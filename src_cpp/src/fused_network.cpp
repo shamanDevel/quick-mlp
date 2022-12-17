@@ -1,6 +1,7 @@
 #include <qmlp/fused_network.h>
 
 #include <tinyformat.h>
+#include <spdlog/spdlog.h>
 #include <qmlp/qmlp.h>
 #include <unordered_set>
 #include <cmath>
@@ -24,7 +25,11 @@ namespace
 static int fetchSharedMemory()
 {
     cudaDeviceProp props;
-    CKL_SAFE_CALL(cudaGetDeviceProperties(&props, 0));
+    auto retVal = cudaGetDeviceProperties(&props, 0);
+    if (retVal == cudaErrorInsufficientDriver) {
+        return 32;
+    }
+    CKL_SAFE_CALL(retVal);
     if (props.warpSize != FusedNetwork::WARP_SIZE)
     {
         throw configuration_error("The warp size has changed, it is no longer %d but %d. This invalidates all algorithms!",

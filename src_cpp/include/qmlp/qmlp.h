@@ -1,8 +1,14 @@
 #pragma once
 
 #include "common.h"
-#include <spdlog/spdlog.h>
 #include <ckl/kernel_loader.h>
+
+namespace spdlog {
+class logger;
+namespace level {
+enum level_enum : int;
+}
+}
 
 QUICKMLP_NAMESPACE_BEGIN
 
