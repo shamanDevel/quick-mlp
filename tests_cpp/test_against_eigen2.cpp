@@ -18,24 +18,28 @@ TEMPLATE_TEST_CASE_SIG("test-against-eigen-2", "[eigen]",
         Channels0, Channels1, Bias1, Activ1, Channels2, Bias2, Activ2),
 
     (16, 16, false, TestActivationType::IDENTITY, 16, false, TestActivationType::IDENTITY),
-    (16, 16, false, TestActivationType::SINE,     16, false, TestActivationType::IDENTITY),
-    (16, 16, false, TestActivationType::SINE,     16, false, TestActivationType::SINE),
-    (16, 16, false, TestActivationType::CELU,     16, false, TestActivationType::CELU),
+    //(16, 16, false, TestActivationType::SINE,     16, false, TestActivationType::IDENTITY),
+    //(16, 16, false, TestActivationType::SINE,     16, false, TestActivationType::SINE),
+    //(16, 16, false, TestActivationType::CELU,     16, false, TestActivationType::CELU),
 
-    (16, 16, false, TestActivationType::IDENTITY, 32, false, TestActivationType::IDENTITY),
-    (16, 16, false, TestActivationType::SINE,     32, false, TestActivationType::IDENTITY),
-    (16, 16, false, TestActivationType::SINE,     32, false, TestActivationType::SINE),
-    (16, 16, false, TestActivationType::CELU,     32, false, TestActivationType::CELU),
+    (19, 16, false, TestActivationType::IDENTITY, 16, false, TestActivationType::IDENTITY),
+    (16, 16, false, TestActivationType::IDENTITY, 23, false, TestActivationType::IDENTITY),
+    (20, 16, false, TestActivationType::IDENTITY, 24, false, TestActivationType::IDENTITY)//,
 
-    (32, 48, false, TestActivationType::IDENTITY, 16, false, TestActivationType::IDENTITY),
-    (32, 48, false, TestActivationType::SINE, 16, false, TestActivationType::IDENTITY),
-    (32, 48, false, TestActivationType::SINE, 16, false, TestActivationType::SINE),
-    (32, 48, false, TestActivationType::CELU, 16, false, TestActivationType::CELU),
+    //(16, 16, false, TestActivationType::IDENTITY, 32, false, TestActivationType::IDENTITY),
+    //(16, 16, false, TestActivationType::SINE,     32, false, TestActivationType::IDENTITY),
+    //(16, 16, false, TestActivationType::SINE,     32, false, TestActivationType::SINE),
+    //(16, 16, false, TestActivationType::CELU,     32, false, TestActivationType::CELU),
 
-    (32, 48, false, TestActivationType::IDENTITY, 32, false, TestActivationType::IDENTITY),
-    (32, 48, false, TestActivationType::SINE, 32, false, TestActivationType::IDENTITY),
-    (32, 48, false, TestActivationType::SINE, 32, false, TestActivationType::SINE),
-    (32, 48, false, TestActivationType::CELU, 32, false, TestActivationType::CELU)//,
+    //(32, 48, false, TestActivationType::IDENTITY, 16, false, TestActivationType::IDENTITY),
+    //(32, 48, false, TestActivationType::SINE, 16, false, TestActivationType::IDENTITY),
+    //(32, 48, false, TestActivationType::SINE, 16, false, TestActivationType::SINE),
+    //(32, 48, false, TestActivationType::CELU, 16, false, TestActivationType::CELU),
+
+    //(32, 48, false, TestActivationType::IDENTITY, 32, false, TestActivationType::IDENTITY),
+    //(32, 48, false, TestActivationType::SINE, 32, false, TestActivationType::IDENTITY),
+    //(32, 48, false, TestActivationType::SINE, 32, false, TestActivationType::SINE),
+    //(32, 48, false, TestActivationType::CELU, 32, false, TestActivationType::CELU)//,
 
     //TODO: Bias
     )
@@ -115,7 +119,7 @@ TEMPLATE_TEST_CASE_SIG("test-against-eigen-2", "[eigen]",
     //run Eigen network
     EigenMatrixX outputEigenHost;
     {
-        auto input = inputHost.transpose();
+        EigenMatrixX input = padInput(inputHost).transpose();
         EigenMatrixX weights0 = toEigenMatrix(network->networkParameter(0, false, qmlp::Tensor::INFERENCE));
         EigenVectorX bias0 = toEigenVector(network->networkParameter(0, true, qmlp::Tensor::INFERENCE));
         EigenMatrixX weights1 = toEigenMatrix(network->networkParameter(1, false, qmlp::Tensor::INFERENCE));
@@ -128,7 +132,7 @@ TEMPLATE_TEST_CASE_SIG("test-against-eigen-2", "[eigen]",
             ? ((weights1 * out0).colwise() + bias1).eval()
             : (weights1 * out0).eval();
         EigenMatrixX out1 = TestActivation<Activ2>::forward(outTemp1);
-        outputEigenHost = out1.transpose();
+        outputEigenHost = removePadOutput(out1.transpose(), Channels2);
     }
     //compare
     COMPARE_TENSOR_AND_MATRIX(outputDevice, outputEigenHost);
@@ -148,7 +152,7 @@ TEMPLATE_TEST_CASE_SIG("test-against-eigen-2", "[eigen]",
     EigenMatrixX adjInputEigen, adjWeights0Eigen, adjBias0Eigen, adjWeights1Eigen, adjBias1Eigen;
     {
         //forward
-        auto input = inputHost.transpose();
+        EigenMatrixX input = padInput(inputHost).transpose();
         EigenMatrixX weights0 = toEigenMatrix(network->networkParameter(0, false, qmlp::Tensor::INFERENCE));
         EigenVectorX bias0 = toEigenVector(network->networkParameter(0, true, qmlp::Tensor::INFERENCE));
         EigenMatrixX weights1 = toEigenMatrix(network->networkParameter(1, false, qmlp::Tensor::INFERENCE));
@@ -162,7 +166,7 @@ TEMPLATE_TEST_CASE_SIG("test-against-eigen-2", "[eigen]",
             : (weights1 * out0).eval();
         EigenMatrixX out1 = TestActivation<Activ2>::forward(outTemp1);
         //backward
-        EigenMatrixX adjOut1 = adjOutputHost.transpose();
+        EigenMatrixX adjOut1 = padInput(adjOutputHost).transpose();
         //std::cout << "adjOut1 = " << adjOut1.block(0, 0, adjOut1.rows(), 1).transpose() << "\n";
 
         EigenMatrixX adjOutTemp1 = TestActivation<Activ2>::adjoint(outTemp1, adjOut1);
@@ -185,7 +189,7 @@ TEMPLATE_TEST_CASE_SIG("test-against-eigen-2", "[eigen]",
         //std::cout << "adjOutTemp0 = " << adjOutTemp0.block(0, 0, adjOutTemp0.rows(), 1).transpose() << "\n";
         //std::cout << "adjInput = " << adjInput.block(0, 0, adjInput.rows(), 1).transpose() << "\n";
 
-        adjInputEigen = adjInput.transpose();
+        adjInputEigen = removePadOutput(adjInput.transpose(), Channels0);
     }
 
     //run CUDA in the different configurations

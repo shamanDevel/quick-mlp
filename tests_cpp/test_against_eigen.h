@@ -163,6 +163,33 @@ namespace tests{
         CKL_SAFE_CALL(cudaMemcpy(dst.rawPtr(), dataHost.data(), dataHost.size(), cudaMemcpyHostToDevice));
     }
 
+    //pads the cols
+    inline EigenMatrixX padInput(const EigenMatrixX& input, int baseSize=16)
+    {
+        int C = input.cols();
+        int C2 = QUICKMLP_NAMESPACE::roundUp(C, baseSize);
+        if (C2 > C)
+        {
+            EigenMatrixX padded;
+            padded.setZero(input.rows(), C2);
+            padded.block(0, 0, padded.rows(), C) = input;
+            return padded;
+        }
+        return input;
+    }
+
+    //removes column padding
+    inline EigenMatrixX removePadOutput(const EigenMatrixX& output, int expectedOutputChannels)
+    {
+        int C = output.cols();
+        if (C > expectedOutputChannels)
+        {
+            return output.block(0, 0, output.rows(), expectedOutputChannels);
+        }
+        REQUIRE(C == expectedOutputChannels);
+        return output;
+    }
+
     template <typename T> int sgn(T val) {
         return (T(0) < val) - (val < T(0));
     }
