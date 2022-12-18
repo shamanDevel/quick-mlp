@@ -27,46 +27,69 @@ TBA
 
 ## Compilation + Project Structure
 
-The project is split into two main parts:
-First, the library in the `include/` and `src` folders contain the algorithms and uses an abstraction of tensors that is completely independent of deep learning libraries. This library can be integrated into other C++ projects for real-time training or inference.
-Second, the PyTorch bindings in `pytorch-bindings` contains interface code to use the fused kernels in regular PyTorch Python scripts.
-
 #### Requirements
 
 - CUDA 11.x (tested with 11.6)
 - C++17-compatible compiler (tested with MSVC2019 and GCC 9.4.0)
-- PyTorch, tested with version 1.11, but should work with newer as well
+- PyTorch for the bindings, tested with version 1.11, but should work with newer as well
 
 Don't forget to clone this repository with submodules (`git clone --recurse-submodules`). Or if you forgot to clone with submodules, you can initialize them afterwards with `git submodule init & git submodule update`.
 
-#### Compilation
+#### C++ library
 
-Compiling the stand-along library (no PyTorch) for C++-projects: Use CMake!
-Include this repository as a subdirectory and link your library against the target `qmlp::qmlp-library`.
+The C++ library is located in `src_cpp/include` and `src_cpp/src`.
+
+To compile, include the root folder of QuickMLP as a subdirectory in CMake.
+Then, link against `qmlp::qmlp-library`.
+
+#### Python / PyTorch bindings
 
 Compile the PyTorch extension: Use `setup.py`!
-In the root directory of the project, call 
 
-```bash
-python setup.py build
-mkdir -p bin
-cp build/lib.linux-x86_64-3.9/qmlp.so bin/
-```
-Note: The path in the last line is specific for Python 3.9 on a Linux machine. For other OS and other Python version, the compiled file will be placed somewhere else. See the log of setup.py for the details.
+1. Activate your python environment, if desired (virtualenv or conda)
+2. Go to the root directory of QuickMLP.
+3. Call `pip -e .`
+4. Enjoy!
 
-After compilation, the custom kernels can be imported into PyTorch via
+Note: right now, compilation is only possible in developer-mode, 
+i.e. the files in this folder are directly used and not copied to the python installation.
+I haven't figured out yet how to copy the resource files (kernel sources) to the installation
+target in setup.py. Ideas, issues, PRs are welcome!
 
-```python
-import torch # Run in Python
-torch.classes.load_library('bin/qmlp.so') # path to the library
-```
 
-To run the Python examples, you'll additionally need the packages `pytest`, `imageio`, `matplotlib`, and `tqdm`.
+## API Documentation
 
-## Python-API Documentation
+The following documentation is written for the Python bindings, but it holds true 
+for the C++ library as well. Just change the class names from `snake_case` to `CamelCase` 
+and you'll have the associated C++ class / method. 
 
-TBA, see the test scripts in `pytorch-tests` for now.
+TODO: json documentation for encoding+network
 
+
+
+## ROADMAP
+
+Encodings:
+
+ - [x] Identity
+ - [x] 1D-6D Dense & Hash Grid
+ - [x] Line Integration
+ - [ ] Spherical Harmonics
+ - [ ] Fourier Features
+
+Activations:
+ - [x] ReLU, CeLU, Sine, Identity
+ - [ ] Snake and other trigonometric ones
+ - [ ] sigmoid, ...
+
+Network
+ - [x] Fused forward evaluation
+ - [x] Input Encoding + Network fusion
+ - [x] Proper padding if input/output channels are not a multiple of 16
+ - [x] Proper handling if the batch size is not a multiple of 16
+ - [x] Gradients for the input
+ - [x] Gradients for the weight matrices
+ - [ ] Gradients for the bias vector
 
 
 ## License
