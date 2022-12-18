@@ -2,13 +2,7 @@
 
 #include "common.h"
 #include <ckl/kernel_loader.h>
-
-namespace spdlog {
-class logger;
-namespace level {
-enum level_enum : int;
-}
-}
+#include <spdlog/fwd.h>
 
 QUICKMLP_NAMESPACE_BEGIN
 
