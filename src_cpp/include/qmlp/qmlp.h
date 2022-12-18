@@ -27,6 +27,18 @@ public:
     static QuickMLP& Instance();
 
     /**
+     * Tests if CUDA is available.
+     * If this is false, all kernel calls will fail with an exception
+     * \return true iff CUDA is available.
+     */
+    [[nodiscard]] bool isCudaAvailable() const;
+
+    /**
+     * Tests if CUDA is available and if not, throw a ckl::cuda_error.
+     */
+    void checkCudaAvailable() const;
+
+    /**
      * Returns the logger instance used to report compile logs (debug) or errors
      */
     [[nodiscard]] logger_t getLogger() const;

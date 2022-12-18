@@ -5,6 +5,7 @@
 #include <torch/script.h>
 #include <c10/cuda/CUDAStream.h>
 #include <sstream>
+#include <spdlog/spdlog.h>
 
 #include <limits>
 #include "tensorlist_node.h"

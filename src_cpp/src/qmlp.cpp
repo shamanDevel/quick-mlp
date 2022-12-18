@@ -28,6 +28,16 @@ QuickMLP& QuickMLP::Instance()
     return INSTANCE;
 }
 
+bool QuickMLP::isCudaAvailable() const
+{
+    return kl_->isCudaAvailable();
+}
+
+void QuickMLP::checkCudaAvailable() const
+{
+    kl_->checkCudaAvailable();
+}
+
 logger_t QuickMLP::getLogger() const
 {
     return logger_;

@@ -4,8 +4,7 @@
 #include <torch/types.h>
 #include <torch/script.h>
 #include <c10/cuda/CUDAStream.h>
-
-#include <unordered_map>
+#include <spdlog/spdlog.h>
 
 #include <qmlp/activation.h>
 #include <qmlp/qmlp.h>
@@ -89,6 +88,10 @@ struct QuickMLPBindings : public torch::CustomClassHolder
     {
         qmlp::QuickMLP::Instance().setLogLevel(level);
     }
+    static bool isCudaAvailable()
+    {
+        return qmlp::QuickMLP::Instance().isCudaAvailable();
+    }
 };
 
 namespace
@@ -105,6 +108,8 @@ TORCH_LIBRARY(qmlp_cu, m)
             "Returns if debug compilation enabled for CUDA kernels or not")
         .def_static("set_log_level", &QuickMLPBindings::setLogLevel,
             "Sets the log level, one of 'off', 'debug', 'info', 'warn', 'error'")
+        .def_static("is_cuda_available", &QuickMLPBindings::isCudaAvailable,
+            "Returns true iff CUDA is available. If false, all kernel calls will fail with an exception.")
     ;
 
     bindActivation(m);

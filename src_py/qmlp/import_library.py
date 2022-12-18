@@ -20,7 +20,13 @@ def load_library():
         if os.path.exists(path):
             torch.classes.load_library(path)
             print("QMLP binaries loaded from", path)
-            print(torch.classes.loaded_libraries)
+            if not torch.classes.qmlp_cu.QuickMLP.is_cuda_available():
+                # CUDA not found or can't be initialized!!
+                # While we could still create instances of the classes in the backend,
+                # we can't launch any kernels.
+                # Hence, I'm going to throw an error here so that user code can respond early and
+                # switch to different implementations.
+                raise ImportError("CUDA not found, QuickMLP can't be imported")
 
             torch.classes.qmlp_cu.QuickMLP.set_compile_debug_mode(False)
             torch.classes.qmlp_cu.QuickMLP.set_log_level("info")

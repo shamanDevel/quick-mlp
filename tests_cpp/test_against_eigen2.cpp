@@ -4,6 +4,7 @@
 #include <fstream>
 #include <iostream>
 #include <Eigen/Core>
+#include <spdlog/spdlog.h>
 
 #include <qmlp/fused_network.h>
 #include <qmlp/qmlp.h>
