@@ -47,7 +47,7 @@ __global__ void NetworkKernelInferenceAndForward(
     const int numel32 = roundUpPower2(numel, 32);
 
     constexpr int INPUT_PAD_START = $$INPUT_PAD_START$$;
-    constexpr int CHANNELS_IN = $$CHANNELS_IN$$;
+    constexpr int CHANNELS_IN = $$CHANNELS_IN$$; // these are multiples of the warp size (16)
     constexpr int CHANNELS_OUT = $$CHANNELS_OUT$$;
 
     KERNEL_1D_LOOP_SYNC(index, valid, numel)
@@ -98,7 +98,8 @@ $$CALL_NETWORK_LAYERS$$
         __syncwarp();
         if (valid)
         {
-            for (int cout=0; cout<CHANNELS_OUT; ++cout)
+            const int actual_channels_out = outputs.size(1);
+            for (int cout=0; cout<actual_channels_out; ++cout)
             {
                 outputs[index][cout] = __half2float(
                     intermediateResultsThread[cout]);
