@@ -26,7 +26,8 @@ static int fetchSharedMemory()
 {
     cudaDeviceProp props;
     auto retVal = cudaGetDeviceProperties(&props, 0);
-    if (retVal == cudaErrorInsufficientDriver) {
+    if (retVal == cudaErrorInsufficientDriver || retVal == cudaErrorNoDevice)
+    {
         return 32;
     }
     CKL_SAFE_CALL(retVal);
