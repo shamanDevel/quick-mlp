@@ -22,10 +22,20 @@ QuickMLP::QuickMLP()
     kl_->setFileLoader(std::make_shared<ckl::FilesystemLoader>(parent));
 }
 
+std::unique_ptr<QuickMLP> QuickMLP::INSTANCE = {};
+
 QuickMLP& QuickMLP::Instance()
 {
-    static QuickMLP INSTANCE;
-    return INSTANCE;
+    if (!INSTANCE)
+    {
+        INSTANCE = std::unique_ptr<QuickMLP>(new QuickMLP);
+    }
+    return *INSTANCE;
+}
+
+void QuickMLP::DeleteInstance()
+{
+    INSTANCE = {};
 }
 
 bool QuickMLP::isCudaAvailable() const

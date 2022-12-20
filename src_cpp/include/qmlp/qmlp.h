@@ -14,6 +14,8 @@ typedef std::shared_ptr<spdlog::logger> logger_t;
 class QuickMLP : public NonAssignable
 {
 private:
+    static std::unique_ptr<QuickMLP> INSTANCE;
+
     const logger_t logger_;
     const ckl::KernelLoader_ptr kl_;
     bool enableCompileDebugMode_;
@@ -25,6 +27,11 @@ public:
      * Returns the global quick-mlp instance
      */
     static QuickMLP& Instance();
+
+    /**
+     * Deletes the global quick-mlp instance
+     */
+    static void DeleteInstance();
 
     /**
      * Tests if CUDA is available.
