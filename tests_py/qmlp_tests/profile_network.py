@@ -105,13 +105,13 @@ def profile_networks():
     device = torch.device("cuda")
 
     n_hidden_x = [2, 4]
-    n_neurons_x = [32, 64]
+    n_neurons_x = [16, 32, 64]
     activation = "ReLU"
     last_activation = "None"
     n_output = 4  # RGBA
 
     N = 1000 * 1000
-    title = "Performance for 1 mio. elements. Network: <hidden channels> x <hidden layers>"
+    title = "Performance for 1 mio. elements. Network: <hidden channels> x <num layers>"
     trials = 10
     startup = 2
 
@@ -181,12 +181,12 @@ def profile_networks():
     print(values)
 
     # Plot
-    width_full = 0.7
+    width_full = 0.8
     width_part = width_full / len(classes)
     x_offsets = np.linspace((-width_full+width_part)/2, (width_full-width_part)/2,
                             len(classes), endpoint=True)
     x = np.arange(len(labels))
-    fig, axes = plt.subplots(ncols=2, figsize=(15,7))
+    fig, axes = plt.subplots(ncols=2, figsize=(20, 7))
     for j,label in enumerate(["Inference", "Forward+Backward"]):
         ax: plt.Axes = axes[j]
         ax.set_xlabel(label)
