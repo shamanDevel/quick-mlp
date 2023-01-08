@@ -20,6 +20,9 @@ if __name__ == '__main__':
     #test_network_two_layers()
     #test_network_three_layers()
 
-    from qmlp_tests.test_network_image import test_optimize
-    test_optimize()
+    #from qmlp_tests.test_network_image import test_optimize
+    #test_optimize()
+
+    from qmlp_tests.profile_network import profile_networks
+    profile_networks()
 

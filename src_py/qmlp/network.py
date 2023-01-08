@@ -239,7 +239,7 @@ class SimulatedNetwork(torch.nn.Module):
 
     def forward(self, x: TensorType["batch", "in-channels", float]
                 ) -> TensorType["batch", "out-channels", float]:
-        return self.layers(x.to(self._weight_dtype)).to(self._weight_dtype)
+        return self.layers(x.to(self._weight_dtype)).to(torch.float32)
 
 
 def copy_torch_to_fused(dst: FusedNetwork, src: SimulatedNetwork, grad: bool = False):
