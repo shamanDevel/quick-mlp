@@ -40,35 +40,6 @@ __device__ void assertFragmentNotNaN(const Fragment& f, const char* msg)
     __syncwarp();
 }
 
-template<int m, int n, int k, typename T>
-__device__ void debug_load_matrix_sync(nvcuda::wmma::fragment<nvcuda::wmma::matrix_b, m, n, k, T, nvcuda::wmma::row_major>& a, const T* mptr, unsigned ldm)
-{
-    //1. Check if the input is aligned
-    assert(isAligned<8>(mptr));
-
-    //2. Check if the inputs hold NaNs
-    const int lineID = threadIdx.x % 32;
-    if (lineID == 0) {
-        auto startPtr = reinterpret_cast<long long>(mptr);
-        auto endPtr = reinterpret_cast<long long>(mptr + (ldm)*k);
-        printf("load_matrix_sync from 0x%llx to 0x%llx\n", startPtr, endPtr);
-        for (int col = 0; col < k; ++col) for (int row = 0; row < n; ++row)
-        {
-            T v = mptr[col * ldm + row]; //row-major
-#if DEBUG_PRINT==1
-            if (detail::isNaN(v)) printf("[%04d] NaN at input entry %d,%d\n", threadIdx.x, row, col);
-#else
-            assert(!detail::isNaN(v));
-#endif
-        }
-    }
-
-    //perform load
-    nvcuda::wmma::load_matrix_sync(a, mptr, ldm);
-
-    //3. Check if the fragments hold NaNs
-    assertFragmentNotNaN(a, "");
-}
 
 static inline __device__
 void printLayer(int layer, int idx, const half* data, int numel)

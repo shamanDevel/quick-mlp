@@ -29,6 +29,8 @@ namespace activations
     $$DEFINE_ACTIVATIONS$$
 }
 
+
+
 __global__ void NetworkKernelInferenceAndForward(
     int numel,
     const Tensor2Read<float> inputs, //shape (numel, Cin)
@@ -37,7 +39,9 @@ __global__ void NetworkKernelInferenceAndForward(
     half* forwardTmpMemory //for storing the intermediate results in the forward pass
     )
 {
+    //The maximal channels, including the skew --> the stride between items
     constexpr int MAX_CHANNELS = $$MAX_CHANNELS$;
+
     //shared memory for the intermediate states
     extern __shared__ half sIntermediateResults[];
 

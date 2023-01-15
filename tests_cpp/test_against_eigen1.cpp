@@ -67,6 +67,24 @@ TEMPLATE_TEST_CASE_SIG("test-against-eigen-1", "[eigen]",
     REQUIRE(__low2float(zero2) == 0.f);
     REQUIRE(__high2float(zero2) == 0.f);
 
+    bool skewSharedMemory = false;
+    bool parallelWeightUpdate = false;
+    SECTION("serial-noSkew")
+    {
+        parallelWeightUpdate = false;
+        skewSharedMemory = false;
+    }
+    SECTION("parallel-noSkew")
+    {
+        parallelWeightUpdate = true;
+        skewSharedMemory = false;
+    }
+    SECTION("parallel-skew")
+    {
+        parallelWeightUpdate = true;
+        skewSharedMemory = true;
+    }
+
     nlohmann::json cfg = {
         {"num_inputs", Channels0},
         {"num_outputs", Channels1},
@@ -86,6 +104,10 @@ TEMPLATE_TEST_CASE_SIG("test-against-eigen-1", "[eigen]",
                 {"bias", Bias1},
                 {"activation", TestActivationConfigName[int(Activ1)]}
             })
+        })},
+        {"options", nlohmann::json::object({
+            {"skew_shared_memory", skewSharedMemory},
+            {"parallel_weight_update", parallelWeightUpdate}
         })}
     };
     std::filesystem::path current(__FILE__);

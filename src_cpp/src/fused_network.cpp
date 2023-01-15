@@ -401,8 +401,12 @@ void FusedNetwork::compileInferenceKernel()
     fillEncodingsAndActivations(codeTemplate, encodingConstantNames);
     //constants
     int maxChannels = 0;
-    for (const auto& l : layers_)
+    for (const auto& l : layers_) {
         maxChannels = std::max({ maxChannels, l.channelsIn, l.channelsOut });
+    }
+    if (compileOptions_.skewSharedMemory) {
+        maxChannels += 8;
+    }
     int maxEncodingChannels = 0;
     for (const auto& e : encodings_)
         maxEncodingChannels += e->numOutputChannels();
@@ -559,8 +563,12 @@ void FusedNetwork::compileForwardKernel()
     fillEncodingsAndActivations(codeTemplate, encodingConstantNames);
     //constants
     int maxChannels = 0;
-    for (const auto& l : layers_)
+    for (const auto& l : layers_) {
         maxChannels = std::max({ maxChannels, l.channelsIn, l.channelsOut });
+    }
+    if (compileOptions_.skewSharedMemory) {
+        maxChannels += 8;
+    }
     int inputPadStart = 0;
     for (const auto& e : encodings_)
         inputPadStart = std::max(inputPadStart, e->maxInputChannel() + 1);
@@ -755,8 +763,12 @@ void FusedNetwork::compileBackwardKernel(int flags)
     fillEncodingsAndActivations(codeTemplate, encodingConstantNames);
     //constants
     int maxChannels = 0;
-    for (const auto& l : layers_)
+    for (const auto& l : layers_) {
         maxChannels = std::max({ maxChannels, l.channelsIn, l.channelsOut });
+    }
+    if (compileOptions_.skewSharedMemory) {
+        maxChannels += 8;
+    }
     int inputPadStart = 0;
     for (const auto& e : encodings_)
         inputPadStart = std::max(inputPadStart, e->maxInputChannel() + 1);

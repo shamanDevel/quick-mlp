@@ -118,7 +118,7 @@ def profile_networks():
     trials = 10
     startup = 2
 
-    classes = ["PyTorch-32", "PyTorch-16", "QuickMLP-serial", "QuickMLP-parallel"]
+    classes = ["PyTorch-32", "PyTorch-16", "QuickMLP-serial", "QuickMLP-parallel", "QuickMLP-parallel-skew"]
     if tinycudann_available:
         classes.append("tiny-cuda-nn")
 
@@ -141,8 +141,15 @@ def profile_networks():
             networks = [
                 create_pytorch32_network(cfg),
                 create_pytorch16_network(cfg),
-                create_quickmlp_network(cfg, {"parallel_weight_update": False}),
-                create_quickmlp_network(cfg, {"parallel_weight_update": True}),
+                create_quickmlp_network(cfg, {
+                    "parallel_weight_update": False,
+                    "skew_shared_memory": False}),
+                create_quickmlp_network(cfg, {
+                    "parallel_weight_update": True,
+                    "skew_shared_memory": False}),
+                create_quickmlp_network(cfg, {
+                    "parallel_weight_update": True,
+                    "skew_shared_memory": True}),
             ]
             if tinycudann_available:
                 networks.append(create_tinycudann_network(cfg))
