@@ -1077,9 +1077,6 @@ void FusedNetwork::adjoint(const Tensor& input, const Tensor& adjOutput, Adjoint
         CKL_SAFE_CALL(cudaEventRecord(adjointEvent_, stream));
     }
 
-    //TEST
-    CKL_SAFE_CALL(cudaDeviceSynchronize()); //TODO: Remove
-
     //LAUNCH KERNELS FOR WEIGHT+BIAS UPDATE
     if (hasNetworkGradients)
     {
@@ -1143,9 +1140,6 @@ void FusedNetwork::adjoint(const Tensor& input, const Tensor& adjOutput, Adjoint
                 CKL_SAFE_CALL(cudaEventRecord(ali.event, ali.stream));
                 CKL_SAFE_CALL(cudaStreamWaitEvent(stream, ali.event));
             }
-
-            //TEST
-            CKL_SAFE_CALL(cudaDeviceSynchronize()); //TODO: Remove
         }
     }
 }
