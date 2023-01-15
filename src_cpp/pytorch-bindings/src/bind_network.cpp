@@ -356,10 +356,6 @@ linked activation specifications are loaded.)doc",
         .def_static("MatrixSize", &NetworkBindings::MatrixSize)
         .def_static("WarpSize", &NetworkBindings::WarpSize)
         .def_static("MaxSharedMemoryBytes", &NetworkBindings::MaxSharedMemoryBytes)
-        .def("is_parallel_streams", &NetworkBindings::isParallelStreams,
-            "True iff parallel streams during backpropagation are enabled")
-        .def("set_parallel_streams", &NetworkBindings::setParallelStreams,
-            "Enables or disables parallel streams during backpropagation. Might speed up the computation")
         .def("num_encodings", &NetworkBindings::numEncodings, 
             "Returns the number of encodings prepending the multilayer perceptron")
         .def("encoding", &NetworkBindings::encoding, R"doc(

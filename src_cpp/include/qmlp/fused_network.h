@@ -32,6 +32,31 @@ public:
     };
     typedef int AdjointModeFlags;
 
+    /**
+     * Compile options, loaded from the json.
+     */
+    struct CompileOptions
+    {
+        //Overwrites the kernel block size.
+        //If set to <0 (the default), use the maximal size
+        int overwriteBlocksizeInference = -1;
+        int overwriteBlocksizeForward = -1;
+        int overwriteBlocksizeBackward = -1;
+        int overwriteBlocksizeWeightUpdate = -1;
+
+        /**
+         * If true, skew the shared memory.
+         * This reduces the bank conflicts but requires 1.5x the memory.
+         */
+        bool skewSharedMemory = false;
+
+        /**
+         * If true, the weight update kernels are launched in separate channels,
+         * allowing for possible parallel execution.
+         */
+        bool parallelWeightUpdate = true;
+    };
+
 private:
     struct LayerSpecification
     {
@@ -50,6 +75,7 @@ private:
         int biasStart;
     };
 
+    CompileOptions compileOptions_;
     int channelsIn_;
     int channelsOut_;
     int networkInputPadding_;
@@ -109,9 +135,6 @@ private:
     std::vector<AdjointLayerInfo> backwardInfo_;
     CUevent adjointEvent_;
 
-    //Should parallel streams be used or not?
-    bool useParallelStreams_ = false;
-
 public:
     //Size of the matrix fragments (hardware limitation of the tensor cores)
     //All inner sizes must be multiples of this.
@@ -132,10 +155,6 @@ public:
      */
     FusedNetwork(const nlohmann::json& cfg, const std::filesystem::path& parent);
     ~FusedNetwork();
-
-    [[nodiscard]] bool isParallelStreams() const { return useParallelStreams_; }
-    //Enables or disables parallel streams. Parallel streams might be faster
-    void setParallelStreams(bool enabled) { useParallelStreams_ = enabled; }
 
     [[nodiscard]] const std::vector<IEncoding_ptr>& encodings() const { return encodings_; }
     [[nodiscard]] int numEncodings() const { return encodings_.size(); }

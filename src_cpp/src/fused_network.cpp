@@ -9,19 +9,6 @@
 
 QUICKMLP_NAMESPACE_BEGIN
 
-/*
- * For testing: overwrite certain settings that do not influence the algorithm,
- * but how the kernels are launched.
- * In other words: the block size. If negative, use the optimal choice
- */
-namespace
-{
-    static constexpr int OVERWRITE_BLOCKSIZE_INFERENCE = -1;
-    static constexpr int OVERWRITE_BLOCKSIZE_FORWARD = -1;
-    static constexpr int OVERWRITE_BLOCKSIZE_BACKWARD = -1;
-    static constexpr int OVERWRITE_BLOCKSIZE_WEIGHT_UPDATE = -1;
-}
-
 static int fetchSharedMemory()
 {
     cudaDeviceProp props;
@@ -53,6 +40,33 @@ FusedNetwork::FusedNetwork(const nlohmann::json& cfg, const std::filesystem::pat
 {
     //kernel loader
     auto loader = QuickMLP::Instance().kernelLoader();
+
+    //compile options
+    if (cfg.contains("options"))
+    {
+        const nlohmann::json options = cfg.at("options");
+
+        compileOptions_.overwriteBlocksizeInference =
+            options.value("overwrite_blocksize_inference",
+                compileOptions_.overwriteBlocksizeInference);
+        compileOptions_.overwriteBlocksizeForward =
+            options.value("overwrite_blocksize_forward",
+                compileOptions_.overwriteBlocksizeForward);
+        compileOptions_.overwriteBlocksizeBackward =
+            options.value("overwrite_blocksize_backward",
+                compileOptions_.overwriteBlocksizeBackward);
+        compileOptions_.overwriteBlocksizeWeightUpdate =
+            options.value("overwrite_blocksize_weight_update",
+                compileOptions_.overwriteBlocksizeWeightUpdate);
+
+        compileOptions_.skewSharedMemory =
+            options.value("skew_shared_memory",
+                compileOptions_.skewSharedMemory);
+
+        compileOptions_.parallelWeightUpdate =
+            options.value("parallel_weight_update",
+                compileOptions_.parallelWeightUpdate);
+    }
 
     //activations
     auto activationSpecs = cfg.at("activation_specification");
@@ -514,8 +528,8 @@ void FusedNetwork::inference(const Tensor& input, Tensor& output, CUstream strea
 
     //LAUNCH KERNEL
     const int blockSize =
-        OVERWRITE_BLOCKSIZE_INFERENCE > 0
-        ? OVERWRITE_BLOCKSIZE_INFERENCE
+        compileOptions_.overwriteBlocksizeInference > 0
+        ? compileOptions_.overwriteBlocksizeInference
         : inferenceKernel_->blockSize;
     const int minGridSize = std::min(
         CKL_DIV_UP(numel, blockSize),
@@ -694,8 +708,8 @@ void FusedNetwork::forward(const Tensor& input, Tensor& output, void* tmpMemory,
 
     //LAUNCH KERNEL
     const int blockSize =
-        OVERWRITE_BLOCKSIZE_FORWARD > 0
-        ? OVERWRITE_BLOCKSIZE_FORWARD
+        compileOptions_.overwriteBlocksizeForward > 0
+        ? compileOptions_.overwriteBlocksizeForward
         : forwardKernel_->blockSize;
     int minGridSize = std::min(
         CKL_DIV_UP(numel, blockSize),
@@ -1027,8 +1041,8 @@ void FusedNetwork::adjoint(const Tensor& input, const Tensor& adjOutput, Adjoint
 
     //LAUNCH KERNEL for the main network
     const int blockSize =
-        OVERWRITE_BLOCKSIZE_BACKWARD > 0
-        ? OVERWRITE_BLOCKSIZE_BACKWARD
+        compileOptions_.overwriteBlocksizeBackward > 0
+        ? compileOptions_.overwriteBlocksizeBackward
         : ak.adjoint.blockSize;
     const int minGridSize = std::min(
         CKL_DIV_UP(numel, blockSize),
@@ -1047,7 +1061,7 @@ void FusedNetwork::adjoint(const Tensor& input, const Tensor& adjOutput, Adjoint
     ak.adjoint.fun.call(
         minGridSize, blockSize, ak.adjoint.sharedMemorySize, stream,
         numel, inputAcc, adjOutputAcc, adjInputAcc, networkParams, forwardTmpMemory, adjointTmpMemory);
-    if (useParallelStreams_) {
+    if (compileOptions_.parallelWeightUpdate) {
         CKL_SAFE_CALL(cudaEventRecord(adjointEvent_, stream));
     }
 
@@ -1085,7 +1099,7 @@ void FusedNetwork::adjoint(const Tensor& input, const Tensor& adjOutput, Adjoint
 
             //launch kernel
             CUstream layerStream;
-            if (useParallelStreams_) {
+            if (compileOptions_.parallelWeightUpdate) {
                 layerStream = ali.stream;
                 CKL_SAFE_CALL(cudaStreamWaitEvent(ali.stream, adjointEvent_));
             } else
@@ -1094,8 +1108,8 @@ void FusedNetwork::adjoint(const Tensor& input, const Tensor& adjOutput, Adjoint
             }
 
             const int blockSizeWeight =
-                OVERWRITE_BLOCKSIZE_WEIGHT_UPDATE > 0
-                ? OVERWRITE_BLOCKSIZE_WEIGHT_UPDATE
+                compileOptions_.overwriteBlocksizeWeightUpdate > 0
+                ? compileOptions_.overwriteBlocksizeWeightUpdate
                 : ck.blockSize;
             const int gridSizeWeight = 1; //one block only (non-atomic reduction)!
             QuickMLP::Instance().getLogger()->debug(
@@ -1113,7 +1127,7 @@ void FusedNetwork::adjoint(const Tensor& input, const Tensor& adjOutput, Adjoint
                 ck.fun.call(gridSizeWeight, blockSizeWeight, ck.sharedMemorySize, layerStream,
                     numel, outAdjWeights, aIn, bIn);
             }
-            if (useParallelStreams_) {
+            if (compileOptions_.parallelWeightUpdate) {
                 CKL_SAFE_CALL(cudaEventRecord(ali.event, ali.stream));
                 CKL_SAFE_CALL(cudaStreamWaitEvent(stream, ali.event));
             }

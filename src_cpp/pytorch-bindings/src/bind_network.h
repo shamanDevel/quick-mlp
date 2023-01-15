@@ -36,10 +36,7 @@ public:
     [[nodiscard]] static int64_t MatrixSize() { return QUICKMLP_NAMESPACE::FusedNetwork::MATRIX_SIZE; }
     [[nodiscard]] static int64_t WarpSize() { return QUICKMLP_NAMESPACE::FusedNetwork::WARP_SIZE; }
     [[nodiscard]] static int64_t MaxSharedMemoryBytes() { return QUICKMLP_NAMESPACE::FusedNetwork::MAX_SHARED_MEMORY_BYTES; }
-
-    [[nodiscard]] bool isParallelStreams() const { return n_->isParallelStreams(); }
-    void setParallelStreams(bool enabled) { n_->setParallelStreams(enabled); }
-
+    
     [[nodiscard]] int64_t numEncodings() const { return n_->numEncodings(); }
     EncodingBindings_ptr encoding(int64_t idx);
 

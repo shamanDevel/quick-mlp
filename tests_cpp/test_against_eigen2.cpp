@@ -83,16 +83,7 @@ TEMPLATE_TEST_CASE_SIG("test-against-eigen-2", "[eigen]",
     QuickMLP::Instance().setLogLevel(spdlog::level::info);
 
     auto network = std::make_shared<qmlp::FusedNetwork>(cfg, configFolder);
-    SECTION("parallel")
-    {
-        network->setParallelStreams(true);
-    }
-    SECTION("serial")
-    {
-        network->setParallelStreams(false);
-    }
     INFO("network parameters: " << network->networkParameterCount());
-    INFO("network parallel streams: " << network->isParallelStreams());
 
     //create parameter tensor
     std::default_random_engine rng(42);  // NOLINT(cert-msc51-cpp)

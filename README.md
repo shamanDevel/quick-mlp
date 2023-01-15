@@ -63,9 +63,52 @@ The following documentation is written for the Python bindings, but it holds tru
 for the C++ library as well. Just change the class names from `snake_case` to `CamelCase` 
 and you'll have the associated C++ class / method. 
 
+Example json specification of the network and encoding:
+```
+{
+    "num_inputs": 3,
+    "num_outputs": 1,
+    "activation_specification": [
+        "qmlp/builtin-activations.json"
+    ],
+    "encodings": [
+        {
+            "id": "identity",
+            "start_in": 0,
+            "n_in": 3
+        }
+    ],
+    "network": [
+        {
+            "n_out": 16,
+            "bias": false,
+            "activation": "relu"
+        },
+        {
+            "n_out": 1,
+            "bias": false,
+            "activation": "relu"
+        }
+    ],
+	"options": {}  //<-- optional
+}
+```
+
 TODO: json documentation for encoding+network
 
 
+#### Compile Options
+
+The compile options are key-value pairs in the `options` field of the network specification.
+The following options are available:
+
+ - overwrite_blocksize_inference [int]: overwrites the kernel block size for the network inference. If unspecified (or negative), the maximal size is used
+ - overwrite_blocksize_forward [int]: overwrites the kernel block size for the network forward kernel, i.e. inference with added storing of intermediate results for the backward kernels. If unspecified (or negative), the maximal size is used
+ - overwrite_blocksize_backward [int]: overwrites the kernel block size for the network backward kernel. If unspecified (or negative), the maximal size is used
+ - overwrite_blocksize_weight_update [int]: overwrites the kernel block size for the weight update kernels during the backward pass. If unspecified (or negative), the maximal size is used
+ - skew_shared_memory [bool]: If true, skew the shared memory. This reduces the bank conflicts but requires 1.5x the amount of shared memory. Default: false
+ - parallel_weight_update [bool]: If true, the weight update kernels are launched in separate channels, allowing for possible parallel execution. Default: true
+ 
 
 ## ROADMAP
 

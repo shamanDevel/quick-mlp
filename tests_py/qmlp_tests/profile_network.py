@@ -33,7 +33,9 @@ class NetworkConfig(NamedTuple):
     n_hidden_layers: int
 
 
-def _create_fused_config(cfg: NetworkConfig) -> str:
+def _create_fused_config(cfg: NetworkConfig, compile_options: dict=None) -> str:
+    if compile_options is None:
+        compile_options = dict()
     def convert_activation(name: str):
         if name == "None": return "identity"
         return name.lower()
@@ -62,13 +64,14 @@ def _create_fused_config(cfg: NetworkConfig) -> str:
                 "n_in": cfg.n_input_dims
             }
         ],
-        "network": layers
+        "network": layers,
+        "options": compile_options
     }
     return json.dumps(cfg2)
 
 
-def create_quickmlp_network(cfg: NetworkConfig) -> torch.nn.Module:
-    return FusedNetwork(_create_fused_config(cfg))
+def create_quickmlp_network(cfg: NetworkConfig, compile_options=None) -> torch.nn.Module:
+    return FusedNetwork(_create_fused_config(cfg, compile_options))
 
 
 def create_pytorch16_network(cfg: NetworkConfig) -> torch.nn.Module:
@@ -115,7 +118,7 @@ def profile_networks():
     trials = 10
     startup = 2
 
-    classes = ["PyTorch-32", "PyTorch-16", "QuickMLP"]
+    classes = ["PyTorch-32", "PyTorch-16", "QuickMLP-serial", "QuickMLP-parallel"]
     if tinycudann_available:
         classes.append("tiny-cuda-nn")
 
@@ -138,7 +141,8 @@ def profile_networks():
             networks = [
                 create_pytorch32_network(cfg),
                 create_pytorch16_network(cfg),
-                create_quickmlp_network(cfg)
+                create_quickmlp_network(cfg, {"parallel_weight_update": False}),
+                create_quickmlp_network(cfg, {"parallel_weight_update": True}),
             ]
             if tinycudann_available:
                 networks.append(create_tinycudann_network(cfg))
@@ -194,7 +198,7 @@ def profile_networks():
         for i in range(len(classes)):
             v = [values[i][k][j] for k in range(len(labels))]
             rects = ax.bar(x + x_offsets[i], v, width_part, label=classes[i])
-            ax.bar_label(rects, padding=3, fmt="%.2f")
+            ax.bar_label(rects, padding=3, fmt="%.1f")
         ax.set_xticks(x, labels)
         if j==0:
             ax.legend(loc='upper left')
